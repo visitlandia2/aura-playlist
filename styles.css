@@ -1,0 +1,38 @@
+body { background-color: #0B0F19; color: #F8FAFC; font-family: system-ui, -apple-system, sans-serif; }
+.glass { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+.drag-active { border-color: #D4AF37 !important; background: rgba(212, 175, 55, 0.1) !important; }
+
+.set-track { display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; margin-bottom: 8px; transition: all 0.2s; }
+.set-track:hover { background: rgba(30, 41, 59, 0.9); border-color: rgba(212, 175, 55, 0.3); }
+.set-track.warning { border-left: 4px solid #F59E0B; }
+.set-track.danger { border-left: 4px solid #EF4444; }
+.set-track.success { border-left: 4px solid #22C55E; }
+.camelot-badge { background: #1E293B; border: 1px solid #D4AF37; color: #D4AF37; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; min-width: 35px; text-align: center; }
+.energy-bar { height: 6px; background: #334155; border-radius: 3px; overflow: hidden; width: 60px; }
+.energy-fill { height: 100%; background: linear-gradient(90deg, #22C55E, #EAB308, #EF4444); }
+.transition-icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.transition-icon.good { background: rgba(34, 197, 94, 0.2); color: #22C55E; }
+.transition-icon.bad { background: rgba(239, 68, 68, 0.2); color: #EF4444; }
+
+.matcher-tab { transition: all 0.2s; }
+.matcher-tab.active { background: rgba(34, 197, 94, 0.2); border-color: #22C55E; color: #22C55E; }
+.matcher-track { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; transition: all 0.2s; }
+.matcher-track:hover { background: rgba(30, 41, 59, 0.8); }
+.matcher-track.found { border-left: 3px solid #22C55E; }
+.matcher-track.missing { border-left: 3px solid #EF4444; }
+.matcher-track-info { flex: 1; min-width: 0; }
+.matcher-track-title { font-weight: 600; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.matcher-track-artist { font-size: 0.85rem; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.matcher-search-btn { font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; transition: all 0.2s; }
+.matcher-search-btn.spotify { color: #1DB954; border: 1px solid #1DB954; }
+.matcher-search-btn.spotify:hover { background: #1DB954; color: white; }
+.matcher-search-btn.tidal { color: #00FFFF; border: 1px solid #00FFFF; }
+.matcher-search-btn.tidal:hover { background: #00FFFF; color: #0B0F19; }
+
+.chart-track { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; transition: all 0.2s; }
+.chart-track:hover { background: rgba(30, 41, 59, 0.8); border-color: rgba(212, 175, 55, 0.3); }
+.chart-rank { font-weight: 800; font-size: 1.1rem; color: #64748B; min-width: 30px; text-align: center; }
+.chart-cover { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: #1E293B; }
+.chart-info { flex: 1; min-width: 0; }
+.chart-title { font-weight: 600; color: #F8FAFC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-artist { font-size: 0.85rem; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

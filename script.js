@@ -475,7 +475,7 @@ function downloadM3U8(content, filename) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// ==================== GLOBAL CHARTS (CON PROXY CORS) ====================
+// ==================== GLOBAL CHARTS (iTunes API - funziona sempre) ====================
 document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     const countryId = document.getElementById('countrySelect').value;
     const loading = document.getElementById('chartsLoading');
@@ -489,44 +489,36 @@ document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     actions.classList.add('hidden');
     
     try {
-        const deezerUrl = countryId === '0' 
-            ? 'https://api.deezer.com/chart/0/tracks?limit=50' 
-            : `https://api.deezer.com/chart/${countryId}/tracks?limit=50`;
+        // iTunes RSS API - supporta CORS nativamente
+        const url = `https://itunes.apple.com/${countryId}/rss/topsongs/limit=50/json`;
         
-        // Usa proxy CORS per bypassare il blocco del browser
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(deezerUrl)}`;
+        const response = await fetch(url);
         
-        let response;
-        let useProxy = true;
-        
-        try {
-            response = await fetch(proxyUrl);
-            if (!response.ok) {
-                // Se il proxy fallisce, prova direttamente
-                response = await fetch(deezerUrl);
-                useProxy = false;
-            }
-        } catch (proxyError) {
-            // Fallback: prova direttamente senza proxy
-            response = await fetch(deezerUrl);
-            useProxy = false;
+        if (!response.ok) {
+            throw new Error(`Errore: ${response.status}`);
         }
-        
-        if (!response.ok) throw new Error(`Errore HTTP: ${response.status}`);
         
         const data = await response.json();
         
-        if (!data.data || data.data.length === 0) {
-            throw new Error('Nessuna traccia trovata per questo paese.');
+        // Estrai le tracce dal formato iTunes
+        const entries = data.feed?.entry || [];
+        
+        if (entries.length === 0) {
+            throw new Error('Nessuna traccia trovata');
         }
         
-        currentCharts = data.data.map((track, idx) => ({
-            rank: idx + 1, 
-            title: track.title, 
-            artist: track.artist.name, 
-            cover: track.album.cover_medium,
-            tidalQuery: `${track.artist.name} ${track.title}`.replace(/[^a-zA-Z0-9\s]/g, '')
-        }));
+        currentCharts = entries.map((entry, idx) => {
+            const artist = entry['im:artist']?.label || entry['im:artist'] || 'Unknown';
+            const title = entry.title?.label || entry.title || 'Unknown';
+            const cover = entry['im:image']?.[2]?.label || entry['im:image']?.[1]?.label || entry['im:image']?.[0]?.label || '';
+            return {
+                rank: idx + 1,
+                title: title,
+                artist: artist,
+                cover: cover,
+                tidalQuery: `${artist} ${title}`.replace(/[^a-zA-Z0-9\s]/g, '')
+            };
+        });
         
         list.innerHTML = currentCharts.map(t => `
             <div class="chart-track">
@@ -547,7 +539,7 @@ document.getElementById('loadChartsBtn').addEventListener('click', async () => {
                 <i data-lucide="alert-circle" class="w-10 h-10 mx-auto mb-2 text-red-400"></i>
                 <p class="font-semibold text-red-400">Impossibile caricare le classifiche</p>
                 <p class="text-sm text-slate-400 mt-2">Motivo: ${err.message}</p>
-                <p class="text-xs text-slate-500 mt-2">Prova con un altro paese o controlla la connessione internet.</p>
+                <p class="text-xs text-slate-500 mt-2">Prova con un altro paese.</p>
             </div>
         `;
         lucide.createIcons();

@@ -7,6 +7,117 @@ let spotifyPlaylist = [];
 let matchedTracks = { found: [], uncertain: [], missing: [] };
 let currentCharts = [];
 
+const CAMELOT_MAP = {
+    'am': '8A', 'a': '8A', 'em': '9A', 'e': '9A', 'bm': '10A', 'b': '10A',
+    'f#m': '11A', 'gbm': '11A', 'c#m': '12A', 'dbm': '12A',
+    'g#m': '1A', 'abm': '1A', 'd#m': '2A', 'ebm': '2A', 'a#m': '3A', 'bbm': '3A',
+    'c': '8B', 'g': '9B', 'd': '10B', 'a': '11B', 'e': '12B', 'b': '1B',
+    'f#': '2B', 'gb': '2B', 'c#': '3B', 'db': '3B', 'g#': '4B', 'ab': '4B',
+    'd#': '5B', 'eb': '5B', 'a#': '6B', 'bb': '6B', 'f': '7B'
+};
+
+function getCamelot(keyStr) {
+    if (!keyStr) return '?';
+    const k = keyStr.toString().toLowerCase().trim();
+    if (/^\d+[AB]$/.test(k)) return k.toUpperCase();
+    return CAMELOT_MAP[k] || '?';
+}
+
+function getEnergy(bpm) {
+    if (!bpm || bpm === '?') return 5;
+    const b = parseFloat(bpm);
+    if (b < 110) return 3;
+    if (b < 120) return 5;
+    if (b < 128) return 7;
+    return 9;
+}
+
+function isHarmonicMatch(key1, key2) {
+    if (key1 === '?' || key2 === '?') return true;
+    const n1 = parseInt(key1);
+    const n2 = parseInt(key2);
+    const l1 = key1.slice(-1);
+    const l2 = key2.slice(-1);
+    if (key1 === key2) return true;
+    if (Math.abs(n1 - n2) === 1 || Math.abs(n1 - n2) === 11) return true;
+    if (n1 === n2 && l1 !== l2) return true;
+    return false;
+}
+
+// ==================== NORMALIZZAZIONE SUPER FLESSIBILE ====================
+const NOISE_WORDS = [
+    'remaster', 'remastered', '2019', '2020', '2021', '2022', '2023', '2024', '2025',
+    'official video', 'official audio', 'lyric video', 'audio', 'video',
+    'feat', 'ft', 'featuring', 'vs', 'x',
+    'remix', 'extended', 'radio edit', 'original mix', 'club mix', 'instrumental',
+    'acoustic', 'live', 'version', 'edit', 'mix', 'clean', 'explicit',
+    'from', 'soundtrack', 'album version', 'single version',
+    'hq', 'hd', '4k', 'official'
+];
+
+function normalizeText(text, strictMode = false) {
+    if (!text) return '';
+    let normalized = text.toString().toLowerCase();
+    normalized = normalized.replace(/[~"'`´^]/g, ' ');
+    normalized = normalized.replace(/\s*-\s*/g, ' ');
+    normalized = normalized.replace(/\s*\(\s*/g, ' ');
+    normalized = normalized.replace(/\s*\)\s*/g, ' ');
+    normalized = normalized.replace(/\s*\[\s*/g, ' ');
+    normalized = normalized.replace(/\s*\]\s*/g, ' ');
+    normalized = normalized.replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi, ' ');
+    if (!strictMode) {
+        for (let word of NOISE_WORDS) {
+            const regex = new RegExp('\\b' + word + '\\b', 'gi');
+            normalized = normalized.replace(regex, ' ');
+        }
+    }
+    normalized = normalized.replace(/[^\w\s]/g, ' ');
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+    return normalized;
+}
+
+function calculateMatchScore(spotifyTrack, libTrack) {
+    const spotifyArtist = normalizeText(spotifyTrack.artist, true);
+    const libArtist = normalizeText(libTrack.artist, true);
+    const spotifyTitle = normalizeText(spotifyTrack.title, false);
+    const libTitle = normalizeText(libTrack.title, false);
+    const artistSimilarity = stringSimilarity(spotifyArtist, libArtist);
+    const titleSimilarity = stringSimilarity(spotifyTitle, libTitle);
+    let artistWeight, titleWeight;
+    if (artistSimilarity >= 90) {
+        artistWeight = 0.80; titleWeight = 0.20;
+    } else if (artistSimilarity >= 70) {
+        artistWeight = 0.60; titleWeight = 0.40;
+    } else {
+        artistWeight = 0.50; titleWeight = 0.50;
+    }
+    const totalScore = (artistSimilarity * artistWeight) + (titleSimilarity * titleWeight);
+    return { total: totalScore, artist: artistSimilarity, title: titleSimilarity };
+}
+
+function stringSimilarity(str1, str2) {
+    const s1 = str1;
+    const s2 = str2;
+    if (s1 === s2) return 100;
+    if (s1.length === 0 || s2.length === 0) return 0;
+    if (s1.includes(s2) || s2.includes(s1)) {
+        const shorter = Math.min(s1.length, s2.length);
+        const longer = Math.max(s1.length, s2.length);
+        return (shorter / longer) * 100;
+    }
+    const words1 = s1.split(' ').filter(w => w.length > 1);
+    const words2 = s2.split(' ').filter(w => w.length > 1);
+    let commonWords = 0;
+    for (let w1 of words1) {
+        for (let w2 of words2) {
+            if (w1 === w2) { commonWords++; break; }
+        }
+    }
+    const maxWords = Math.max(words1.length, words2.length);
+    if (maxWords === 0) return 0;
+    return (commonWords / maxWords) * 100;
+}
+
 // ==================== AUTENTICAZIONE ====================
 function showMessage(text, type = 'error') {
     const msg = document.getElementById('authMessage');
@@ -63,76 +174,6 @@ function showDashboard() {
 function logout() { supabase.signOut(); document.getElementById('dashboardScreen').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); hideMessage(); }
 if (supabase.isLoggedIn()) showDashboard(); else updateAuthUI();
 
-// ==================== NORMALIZZAZIONE SUPER FLESSIBILE ====================
-const NOISE_WORDS = [
-    'remaster', 'remastered', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018',
-    'official video', 'official audio', 'lyric video', 'audio', 'video',
-    'feat', 'ft', 'featuring', 'vs', 'x',
-    'remix', 'extended', 'radio edit', 'original mix', 'club mix', 'instrumental',
-    'acoustic', 'live', 'version', 'edit', 'mix', 'clean', 'explicit',
-    'from', 'soundtrack', 'album version', 'single version',
-    'hq', 'hd', '4k', 'official'
-];
-
-function normalizeText(text, strictMode = false) {
-    if (!text) return '';
-    let normalized = text.toString().toLowerCase();
-    normalized = normalized.replace(/[~"'`´^]/g, ' ');
-    normalized = normalized.replace(/\s*-\s*/g, ' ');
-    normalized = normalized.replace(/\s*\(\s*/g, ' ');
-    normalized = normalized.replace(/\s*\)\s*/g, ' ');
-    normalized = normalized.replace(/\s*\[\s*/g, ' ');
-    normalized = normalized.replace(/\s*\]\s*/g, ' ');
-    normalized = normalized.replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi, ' ');
-    if (!strictMode) {
-        for (let word of NOISE_WORDS) {
-            const regex = new RegExp('\\b' + word + '\\b', 'gi');
-            normalized = normalized.replace(regex, ' ');
-        }
-    }
-    normalized = normalized.replace(/[^\w\s]/g, ' ');
-    normalized = normalized.replace(/\s+/g, ' ').trim();
-    return normalized;
-}
-
-function calculateMatchScore(spotifyTrack, libTrack) {
-    const spotifyArtist = normalizeText(spotifyTrack.artist, true);
-    const libArtist = normalizeText(libTrack.artist, true);
-    const spotifyTitle = normalizeText(spotifyTrack.title, false);
-    const libTitle = normalizeText(libTrack.title, false);
-    const artistSimilarity = stringSimilarity(spotifyArtist, libArtist);
-    const titleSimilarity = stringSimilarity(spotifyTitle, libTitle);
-    let artistWeight, titleWeight;
-    if (artistSimilarity >= 90) { artistWeight = 0.80; titleWeight = 0.20; }
-    else if (artistSimilarity >= 70) { artistWeight = 0.60; titleWeight = 0.40; }
-    else { artistWeight = 0.50; titleWeight = 0.50; }
-    const totalScore = (artistSimilarity * artistWeight) + (titleSimilarity * titleWeight);
-    return { total: totalScore, artist: artistSimilarity, title: titleSimilarity };
-}
-
-function stringSimilarity(str1, str2) {
-    const s1 = str1;
-    const s2 = str2;
-    if (s1 === s2) return 100;
-    if (s1.length === 0 || s2.length === 0) return 0;
-    if (s1.includes(s2) || s2.includes(s1)) {
-        const shorter = Math.min(s1.length, s2.length);
-        const longer = Math.max(s1.length, s2.length);
-        return (shorter / longer) * 100;
-    }
-    const words1 = s1.split(' ').filter(w => w.length > 1);
-    const words2 = s2.split(' ').filter(w => w.length > 1);
-    let commonWords = 0;
-    for (let w1 of words1) {
-        for (let w2 of words2) {
-            if (w1 === w2) { commonWords++; break; }
-        }
-    }
-    const maxWords = Math.max(words1.length, words2.length);
-    if (maxWords === 0) return 0;
-    return (commonWords / maxWords) * 100;
-}
-
 // ==================== IMPORT LIBRERIA ====================
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -148,6 +189,7 @@ function handleFile(file) {
         const content = e.target.result;
         let tracks = [];
         let playlists = {};
+        
         if (file.name.endsWith('.xml')) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(content, "text/xml");
@@ -156,8 +198,8 @@ function handleFile(file) {
                 artist: node.getAttribute("Artist") || "Unknown",
                 title: node.getAttribute("Name") || "Unknown",
                 bpm: node.getAttribute("BPM") || "?",
-                key: "?",
-                energy: 5
+                key: getCamelot(node.getAttribute("Key") || "?"),
+                energy: getEnergy(node.getAttribute("BPM"))
             }));
             playlists = { 'Collection': tracks };
         } else if (file.name.endsWith('.m3u8') || file.name.endsWith('.m3u')) {
@@ -166,6 +208,7 @@ function handleFile(file) {
             let currentTitle = "";
             let currentArtist = "";
             playlists[currentPlaylist] = [];
+            
             for (let line of lines) {
                 line = line.trim();
                 if (line.startsWith('#PLAYLIST:') || line.startsWith('#Playlist:')) {
@@ -175,10 +218,10 @@ function handleFile(file) {
                     const commaIndex = line.indexOf(",");
                     if (commaIndex > -1) {
                         const metadata = line.substring(commaIndex + 1).trim();
-                        const lastDash = metadata.lastIndexOf(' - ');
-                        if (lastDash > 0) {
-                            currentArtist = metadata.substring(0, lastDash).trim();
-                            currentTitle = metadata.substring(lastDash + 3).trim();
+                        const parts = metadata.split(' - ');
+                        if (parts.length >= 2) {
+                            currentArtist = parts[0].trim();
+                            currentTitle = parts.slice(1).join(' - ').trim();
                         } else {
                             currentArtist = "Unknown";
                             currentTitle = metadata;
@@ -193,6 +236,7 @@ function handleFile(file) {
                 }
             }
         } else { alert('Formato non supportato.'); return; }
+        
         userLibrary = tracks;
         playlistStructure = playlists;
         document.getElementById('dropText').innerText = 'Trascina qui il file';
@@ -225,6 +269,7 @@ function renderPlaylistTree() {
                 <input type="checkbox" class="track-checkbox" data-id="${trackId}" onchange="updateSelectedCount()">
                 <div class="track-info">
                     <div class="track-title">${track.artist} - ${track.title}</div>
+                    <div class="track-meta">${track.key} | ${track.bpm} BPM</div>
                 </div>
             </div>`;
         });
@@ -328,13 +373,25 @@ function parseSpotifyExport(content, filename) {
         for (let line of lines) {
             line = line.trim();
             if (!line || line.startsWith('#')) continue;
-            const lastDashIndex = line.lastIndexOf(' - ');
-            if (lastDashIndex > 0) {
-                const title = line.substring(0, lastDashIndex).trim();
-                const artist = line.substring(lastDashIndex + 3).trim();
-                if (artist && title && artist.length > 0 && title.length > 0) {
-                    tracks.push({ artist: artist, title: title, original: line });
+            const parts = line.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
+            if (parts.length < 2) continue;
+            let artist, title;
+            if (parts.length === 2) {
+                const [first, last] = parts;
+                if (first.length <= last.length) {
+                    artist = first; title = last;
+                } else {
+                    title = first; artist = last;
                 }
+            } else {
+                artist = parts[parts.length - 1];
+                title = parts.slice(0, -1).join(' - ');
+                if (artist.length > title.length && parts.length === 2) {
+                    const temp = artist; artist = title; title = temp;
+                }
+            }
+            if (artist && title && artist.length > 0 && title.length > 0) {
+                tracks.push({ artist: artist, title: title, original: line });
             }
         }
     }
@@ -381,14 +438,14 @@ function renderMatcherResults() {
 function renderFoundList() {
     const list = document.getElementById('foundList');
     if (matchedTracks.found.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match trovato.</p>'; return; }
-    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Titolo: ${Math.round(t.score.title)}%)</div></div></div>`).join('');
+    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Totale: ${Math.round(t.score.total)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
 function renderUncertainList() {
     const list = document.getElementById('uncertainList');
     if (matchedTracks.uncertain.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match incerto.</p>'; return; }
-    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Titolo: ${Math.round(t.score.title)}%)</div></div></div>`).join('');
+    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Totale: ${Math.round(t.score.total)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 

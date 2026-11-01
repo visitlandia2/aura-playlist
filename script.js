@@ -7,6 +7,73 @@ let spotifyPlaylist = [];
 let matchedTracks = { found: [], uncertain: [], missing: [] };
 let currentCharts = [];
 
+const CAMELOT_MAP = {
+    'am': '8A', 'a': '8A', 'em': '9A', 'e': '9A', 'bm': '10A', 'b': '10A',
+    'f#m': '11A', 'gbm': '11A', 'c#m': '12A', 'dbm': '12A',
+    'g#m': '1A', 'abm': '1A', 'd#m': '2A', 'ebm': '2A', 'a#m': '3A', 'bbm': '3A',
+    'c': '8B', 'g': '9B', 'd': '10B', 'a': '11B', 'e': '12B', 'b': '1B',
+    'f#': '2B', 'gb': '2B', 'c#': '3B', 'db': '3B', 'g#': '4B', 'ab': '4B',
+    'd#': '5B', 'eb': '5B', 'a#': '6B', 'bb': '6B', 'f': '7B'
+};
+
+function getCamelot(keyStr) {
+    if (!keyStr) return '?';
+    const k = keyStr.toString().toLowerCase().trim();
+    if (/^\d+[AB]$/.test(k)) return k.toUpperCase();
+    return CAMELOT_MAP[k] || '?';
+}
+
+function getEnergy(bpm) {
+    if (!bpm || bpm === '?') return 5;
+    const b = parseFloat(bpm);
+    if (b < 110) return 3;
+    if (b < 120) return 5;
+    if (b < 128) return 7;
+    return 9;
+}
+
+function normalizeText(text, strictMode = false) {
+    if (!text) return '';
+    let normalized = text.toString().toLowerCase();
+    normalized = normalized.replace(/\s*(feat\.?|ft\.?|featuring|vs\.?|x)\s+[^,;]+/gi, '');
+    if (!strictMode) {
+        normalized = normalized.replace(/\s*(remix|extended|radio edit|original mix|club mix|instrumental|acoustic|live|version|edit|mix|clean|explicit)\s*/gi, '');
+    }
+    normalized = normalized.replace(/[^\w\s]/g, '');
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+    return normalized;
+}
+
+function stringSimilarity(str1, str2) {
+    const s1 = str1;
+    const s2 = str2;
+    if (s1 === s2) return 100;
+    if (s1.length === 0 || s2.length === 0) return 0;
+    if (s1.includes(s2) || s2.includes(s1)) {
+        return (Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)) * 100;
+    }
+    const words1 = s1.split(' ');
+    const words2 = s2.split(' ');
+    let common = 0;
+    for (let w1 of words1) {
+        for (let w2 of words2) {
+            if (w1 === w2) { common++; break; }
+        }
+    }
+    return (common / Math.max(words1.length, words2.length)) * 100;
+}
+
+function calculateMatchScore(spotifyTrack, libTrack) {
+    const spotifyArtist = normalizeText(spotifyTrack.artist, true);
+    const libArtist = normalizeText(libTrack.artist, true);
+    const spotifyTitle = normalizeText(spotifyTrack.title, false);
+    const libTitle = normalizeText(libTrack.title, false);
+    const artistSimilarity = stringSimilarity(spotifyArtist, libArtist);
+    const titleSimilarity = stringSimilarity(spotifyTitle, libTitle);
+    const totalScore = (artistSimilarity * 0.7) + (titleSimilarity * 0.3);
+    return { total: totalScore, artist: artistSimilarity, title: titleSimilarity };
+}
+
 function showMessage(text, type = 'error') {
     const msg = document.getElementById('authMessage');
     msg.classList.remove('hidden', 'bg-red-500/20', 'border-red-500', 'text-red-300', 'bg-green-500/20', 'border-green-500', 'text-green-300');
@@ -84,7 +151,10 @@ function handleFile(file) {
             const trackNodes = xmlDoc.getElementsByTagName("TRACK");
             tracks = Array.from(trackNodes).map(node => ({
                 artist: node.getAttribute("Artist") || "Unknown",
-                title: node.getAttribute("Name") || "Unknown"
+                title: node.getAttribute("Name") || "Unknown",
+                bpm: node.getAttribute("BPM") || "?",
+                key: getCamelot(node.getAttribute("Key") || "?"),
+                energy: getEnergy(node.getAttribute("BPM"))
             }));
             playlists = { 'Collection': tracks };
         } else if (file.name.endsWith('.m3u8') || file.name.endsWith('.m3u')) {
@@ -113,7 +183,7 @@ function handleFile(file) {
                         }
                     }
                 } else if (line && !line.startsWith("#") && currentTitle !== "") {
-                    const track = { artist: currentArtist, title: currentTitle, playlist: currentPlaylist };
+                    const track = { artist: currentArtist, title: currentTitle, bpm: "?", key: "?", energy: 5, playlist: currentPlaylist };
                     tracks.push(track);
                     if (!playlists[currentPlaylist]) playlists[currentPlaylist] = [];
                     playlists[currentPlaylist].push(track);
@@ -154,6 +224,7 @@ function renderPlaylistTree() {
                 <input type="checkbox" class="track-checkbox" data-id="${trackId}" onchange="updateSelectedCount()">
                 <div class="track-info">
                     <div class="track-title">${track.artist} - ${track.title}</div>
+                    <div class="track-meta">${track.key} | ${track.bpm} BPM</div>
                 </div>
             </div>`;
         });
@@ -225,7 +296,7 @@ async function loadSavedLibrary() {
     } catch (err) { console.error(err); }
 }
 
-// TRACK MATCHER CON ALGORITMO MIGLIORATO
+// TRACK MATCHER
 const matcherDropZone = document.getElementById('matcherDropZone');
 const matcherFileInput = document.getElementById('matcherFileInput');
 ['dragenter', 'dragover'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.add('drag-active'); }); });
@@ -265,149 +336,27 @@ function parseSpotifyExport(content, filename) {
     return tracks;
 }
 
-// NORMALIZZAZIONE ARTISTA (RIGOROSA)
-function normalizeArtist(artist) {
-    if (!artist) return '';
-    return artist.toString()
-        .toLowerCase()
-        // Rimuove "feat.", "ft.", "featuring", "vs.", "x"
-        .replace(/\s*(feat\.?|ft\.?|featuring|vs\.?|x)\s+[^,;]+/gi, '')
-        // Rimuove punteggiatura
-        .replace(/[^\w\s]/g, '')
-        // Rimuove spazi multipli
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-// NORMALIZZAZIONE TITOLO (FLESSIBILE)
-function normalizeTitle(title) {
-    if (!title) return '';
-    return title.toString()
-        .toLowerCase()
-        // Rimuove "feat.", "ft.", "featuring"
-        .replace(/\s*(feat\.?|ft\.?|featuring|vs\.?|x)\s+[^,;]+/gi, '')
-        // Rimuove versioni remix/extended
-        .replace(/\s*(remix|extended|radio edit|original mix|club mix|instrumental|acoustic|live|version|edit|mix)\s*/gi, '')
-        // Rimuove "(Official Video)", "(Audio)", "(Lyrics)", ecc.
-        .replace(/\s*\([^)]*(video|audio|lyrics|official|music|hd|hq)[^)]*\)/gi, '')
-        // Rimuove punteggiatura
-        .replace(/[^\w\s]/g, '')
-        // Rimuove spazi multipli
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-// CALCOLO SIMILARITÀ ARTISTA (RIGOROSO)
-function artistSimilarity(artist1, artist2) {
-    const a1 = normalizeArtist(artist1);
-    const a2 = normalizeArtist(artist2);
-    
-    if (a1 === a2) return 100;
-    if (a1.length === 0 || a2.length === 0) return 0;
-    
-    // Se uno contiene l'altro completamente
-    if (a1.includes(a2) || a2.includes(a1)) {
-        const shorter = Math.min(a1.length, a2.length);
-        const longer = Math.max(a1.length, a2.length);
-        return (shorter / longer) * 100;
-    }
-    
-    // Confronto parole
-    const words1 = a1.split(' ');
-    const words2 = a2.split(' ');
-    let commonWords = 0;
-    
-    for (let w1 of words1) {
-        for (let w2 of words2) {
-            if (w1 === w2) { commonWords++; break; }
-        }
-    }
-    
-    const maxWords = Math.max(words1.length, words2.length);
-    return (commonWords / maxWords) * 100;
-}
-
-// CALCOLO SIMILARITÀ TITOLO (FLESSIBILE)
-function titleSimilarity(title1, title2) {
-    const t1 = normalizeTitle(title1);
-    const t2 = normalizeTitle(title2);
-    
-    if (t1 === t2) return 100;
-    if (t1.length === 0 || t2.length === 0) return 0;
-    
-    // Se uno contiene l'altro completamente
-    if (t1.includes(t2) || t2.includes(t1)) {
-        const shorter = Math.min(t1.length, t2.length);
-        const longer = Math.max(t1.length, t2.length);
-        return (shorter / longer) * 100;
-    }
-    
-    // Confronto parole
-    const words1 = t1.split(' ');
-    const words2 = t2.split(' ');
-    let commonWords = 0;
-    
-    for (let w1 of words1) {
-        for (let w2 of words2) {
-            if (w1 === w2) { commonWords++; break; }
-        }
-    }
-    
-    const maxWords = Math.max(words1.length, words2.length);
-    return (commonWords / maxWords) * 100;
-}
-
 function performMatching() {
     if (userLibrary.length === 0) { alert('⚠️ Prima carica la libreria!'); return; }
-    
     matchedTracks = { found: [], uncertain: [], missing: [] };
-    
     for (let sp of spotifyPlaylist) {
         let bestMatch = null;
-        let bestArtistScore = 0;
-        let bestTitleScore = 0;
-        
+        let bestScore = { total: 0, artist: 0, title: 0 };
         for (let lib of userLibrary) {
-            const artistSim = artistSimilarity(sp.artist, lib.artist);
-            const titleSim = titleSimilarity(sp.title, lib.title);
-            
-            // LOGICA INTELLIGENTE:
-            // 1. Artista deve matchare almeno 80% (rigoroso)
-            // 2. Titolo deve matchare almeno 60% (flessibile)
-            // 3. Se entrambi i criteri sono soddisfatti, è un match certo
-            
-            if (artistSim >= 80 && titleSim >= 60) {
-                const totalScore = (artistSim + titleSim) / 2;
-                if (totalScore > bestArtistScore + bestTitleScore) {
-                    bestMatch = lib;
-                    bestArtistScore = artistSim;
-                    bestTitleScore = titleSim;
-                }
+            const score = calculateMatchScore(sp, lib);
+            if (score.total > bestScore.total) {
+                bestScore = score;
+                bestMatch = lib;
             }
         }
-        
-        // Classifica il risultato
-        if (bestMatch && bestArtistScore >= 80 && bestTitleScore >= 60) {
-            matchedTracks.found.push({ 
-                ...sp, 
-                match: bestMatch, 
-                artistScore: bestArtistScore,
-                titleScore: bestTitleScore
-            });
-        } else if (bestMatch && bestArtistScore >= 60) {
-            // Artista simile ma titolo diverso -> incerto
-            matchedTracks.uncertain.push({ 
-                ...sp, 
-                match: bestMatch,
-                artistScore: bestArtistScore,
-                titleScore: bestTitleScore
-            });
+        if (bestScore.artist >= 80 && bestScore.total >= 70) {
+            matchedTracks.found.push({ ...sp, match: bestMatch, score: bestScore });
+        } else if (bestScore.artist >= 70 && bestScore.total >= 50) {
+            matchedTracks.uncertain.push({ ...sp, match: bestMatch, score: bestScore });
         } else {
-            // Nessun match valido
             matchedTracks.missing.push(sp);
         }
     }
-    
     renderMatcherResults();
 }
 
@@ -426,15 +375,15 @@ function renderMatcherResults() {
 
 function renderFoundList() {
     const list = document.getElementById('foundList');
-    if (matchedTracks.found.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match.</p>'; return; }
-    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Artista: ${Math.round(t.artistScore)}%, Titolo: ${Math.round(t.titleScore)}%)</div></div></div>`).join('');
+    if (matchedTracks.found.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match trovato.</p>'; return; }
+    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Totale: ${Math.round(t.score.total)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
 function renderUncertainList() {
     const list = document.getElementById('uncertainList');
-    if (matchedTracks.uncertain.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun incerto.</p>'; return; }
-    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Artista: ${Math.round(t.artistScore)}%, Titolo: ${Math.round(t.titleScore)}%)</div></div></div>`).join('');
+    if (matchedTracks.uncertain.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match incerto.</p>'; return; }
+    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Totale: ${Math.round(t.score.total)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
@@ -460,9 +409,9 @@ document.getElementById('showMissingBtn').addEventListener('click', () => {
 
 document.getElementById('exportMissingBtn').addEventListener('click', () => {
     if (matchedTracks.missing.length === 0) { alert('Nessuna traccia mancante.'); return; }
-    let m3u8 = '#EXTM3U\n# PLAYLIST: AURA - Mancanti\n';
+    let m3u8 = '#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n';
     matchedTracks.missing.forEach(t => {
-        m3u8 += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`;
+        m3u8 += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n# TIDAL: https://tidal.com/search?q=${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`;
     });
     downloadM3U8(m3u8, 'AURA_Mancanti');
 });
@@ -489,23 +438,15 @@ document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     actions.classList.add('hidden');
     
     try {
-        // iTunes RSS API - supporta CORS nativamente
         const url = `https://itunes.apple.com/${countryId}/rss/topsongs/limit=50/json`;
-        
         const response = await fetch(url);
         
-        if (!response.ok) {
-            throw new Error(`Errore: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Errore: ${response.status}`);
         
         const data = await response.json();
-        
-        // Estrai le tracce dal formato iTunes
         const entries = data.feed?.entry || [];
         
-        if (entries.length === 0) {
-            throw new Error('Nessuna traccia trovata');
-        }
+        if (entries.length === 0) throw new Error('Nessuna traccia trovata');
         
         currentCharts = entries.map((entry, idx) => {
             const artist = entry['im:artist']?.label || entry['im:artist'] || 'Unknown';

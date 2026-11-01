@@ -3,75 +3,9 @@ let authMode = 'login';
 let userLibrary = []; 
 let playlistStructure = {};
 let selectedTracks = new Set();
-let currentSet = []; 
 let spotifyPlaylist = [];
 let matchedTracks = { found: [], uncertain: [], missing: [] };
 let currentCharts = [];
-
-const CAMELOT_MAP = {
-    'am': '8A', 'a': '8A', 'em': '9A', 'e': '9A', 'bm': '10A', 'b': '10A',
-    'f#m': '11A', 'gbm': '11A', 'c#m': '12A', 'dbm': '12A',
-    'g#m': '1A', 'abm': '1A', 'd#m': '2A', 'ebm': '2A', 'a#m': '3A', 'bbm': '3A',
-    'c': '8B', 'g': '9B', 'd': '10B', 'a': '11B', 'e': '12B', 'b': '1B',
-    'f#': '2B', 'gb': '2B', 'c#': '3B', 'db': '3B', 'g#': '4B', 'ab': '4B',
-    'd#': '5B', 'eb': '5B', 'a#': '6B', 'bb': '6B', 'f': '7B'
-};
-
-function getCamelot(keyStr) {
-    if (!keyStr) return '?';
-    const k = keyStr.toString().toLowerCase().trim();
-    if (/^\d+[AB]$/.test(k)) return k.toUpperCase();
-    return CAMELOT_MAP[k] || '?';
-}
-
-function getEnergy(bpm) {
-    if (!bpm || bpm === '?') return 5;
-    const b = parseFloat(bpm);
-    if (b < 110) return 3;
-    if (b < 120) return 5;
-    if (b < 128) return 7;
-    return 9;
-}
-
-function isHarmonicMatch(key1, key2) {
-    if (key1 === '?' || key2 === '?') return true;
-    const n1 = parseInt(key1);
-    const n2 = parseInt(key2);
-    const l1 = key1.slice(-1);
-    const l2 = key2.slice(-1);
-    if (key1 === key2) return true;
-    if (Math.abs(n1 - n2) === 1 || Math.abs(n1 - n2) === 11) return true;
-    if (n1 === n2 && l1 !== l2) return true;
-    return false;
-}
-
-function normalizeText(text) {
-    if (!text) return '';
-    return text.toString().toLowerCase()
-        .replace(/\s*(feat\.?|ft\.?|featuring|vs\.?|x)\s+[^,;]+/gi, '')
-        .replace(/\s*(remix|extended|radio edit|original mix|club mix|instrumental|acoustic|live|version|edit|mix)\s*/gi, '')
-        .replace(/[^\w\s]/g, '')
-        .replace(/\s+/g, ' ').trim();
-}
-
-function stringSimilarity(str1, str2) {
-    const s1 = normalizeText(str1);
-    const s2 = normalizeText(str2);
-    if (s1 === s2) return 100;
-    if (s1.length === 0 || s2.length === 0) return 0;
-    if (s1.includes(s2) || s2.includes(s1)) {
-        return (Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)) * 100;
-    }
-    const words1 = s1.split(' ');
-    const words2 = s2.split(' ');
-    let common = 0;
-    for (let w1 of words1) {
-        for (let w2 of words2) {
-            if (w1 === w2) { common++; break; }
-        }
-    }
-    return (common / Math.max(words1.length, words2.length)) * 100;
-}
 
 function showMessage(text, type = 'error') {
     const msg = document.getElementById('authMessage');
@@ -150,10 +84,7 @@ function handleFile(file) {
             const trackNodes = xmlDoc.getElementsByTagName("TRACK");
             tracks = Array.from(trackNodes).map(node => ({
                 artist: node.getAttribute("Artist") || "Unknown",
-                title: node.getAttribute("Name") || "Unknown",
-                bpm: node.getAttribute("BPM") || "?",
-                key: getCamelot(node.getAttribute("Key") || "?"),
-                energy: getEnergy(node.getAttribute("BPM"))
+                title: node.getAttribute("Name") || "Unknown"
             }));
             playlists = { 'Collection': tracks };
         } else if (file.name.endsWith('.m3u8') || file.name.endsWith('.m3u')) {
@@ -182,7 +113,7 @@ function handleFile(file) {
                         }
                     }
                 } else if (line && !line.startsWith("#") && currentTitle !== "") {
-                    const track = { artist: currentArtist, title: currentTitle, bpm: "?", key: "?", energy: 5, playlist: currentPlaylist };
+                    const track = { artist: currentArtist, title: currentTitle, playlist: currentPlaylist };
                     tracks.push(track);
                     if (!playlists[currentPlaylist]) playlists[currentPlaylist] = [];
                     playlists[currentPlaylist].push(track);
@@ -223,7 +154,6 @@ function renderPlaylistTree() {
                 <input type="checkbox" class="track-checkbox" data-id="${trackId}" onchange="updateSelectedCount()">
                 <div class="track-info">
                     <div class="track-title">${track.artist} - ${track.title}</div>
-                    <div class="track-meta">${track.key} | ${track.bpm} BPM</div>
                 </div>
             </div>`;
         });
@@ -267,119 +197,6 @@ document.getElementById('selectAllPlaylistsBtn').addEventListener('click', () =>
     updateSelectedCount();
 });
 
-// SET BUILDER
-document.getElementById('buildSetBtn').addEventListener('click', () => {
-    if (userLibrary.length === 0) { alert('Carica prima una libreria!'); return; }
-    if (selectedTracks.size < 2) { alert('Seleziona almeno 2 tracce!'); return; }
-    let pool = [];
-    selectedTracks.forEach(trackId => {
-        const parts = trackId.split('-');
-        const idx = parseInt(parts[parts.length - 1]);
-        const playlistName = parts.slice(0, -1).join('-');
-        if (playlistStructure[playlistName] && playlistStructure[playlistName][idx]) {
-            pool.push(playlistStructure[playlistName][idx]);
-        }
-    });
-    if (pool.length < 2) { alert('Seleziona almeno 2 tracce.'); return; }
-
-    const shape = document.getElementById('nightShape').value;
-    let targetEnergies = [];
-    if (shape === 'warmup') targetEnergies = pool.map((_, i) => 3 + (i / pool.length) * 2);
-    else if (shape === 'peak') targetEnergies = pool.map((_, i) => { const pos = i / pool.length; return pos < 0.5 ? 7 + (pos * 4) : 9 - ((pos - 0.5) * 4); });
-    else if (shape === 'closing') targetEnergies = pool.map((_, i) => 6 - (i / pool.length) * 2);
-    else targetEnergies = pool.map((_, i) => { const pos = i / pool.length; if (pos < 0.25) return 3 + (pos * 8); if (pos < 0.75) return 5 + ((pos - 0.25) * 6.4); return 9 - ((pos - 0.75) * 8); });
-
-    currentSet = [];
-    let available = [...pool];
-    available.sort((a, b) => a.energy - b.energy);
-    currentSet.push(available.shift());
-
-    while (available.length > 0) {
-        const lastTrack = currentSet[currentSet.length - 1];
-        const targetIdx = currentSet.length;
-        const targetEnergy = targetEnergies[targetIdx] || 5;
-        let bestScore = -999; let bestTrackIdx = 0;
-        for (let i = 0; i < available.length; i++) {
-            const candidate = available[i];
-            let score = 0;
-            if (isHarmonicMatch(lastTrack.key, candidate.key)) score += 50;
-            const bpmDiff = Math.abs(parseFloat(candidate.bpm || 0) - parseFloat(lastTrack.bpm || 0));
-            if (bpmDiff <= 3) score += 30; else if (bpmDiff <= 6) score += 15; else score -= bpmDiff;
-            score -= Math.abs(candidate.energy - targetEnergy) * 5;
-            if (score > bestScore) { bestScore = score; bestTrackIdx = i; }
-        }
-        currentSet.push(available.splice(bestTrackIdx, 1)[0]);
-    }
-    renderCurrentSet();
-});
-
-function renderCurrentSet() {
-    const list = document.getElementById('setBuilderList');
-    list.innerHTML = currentSet.map((t, i) => {
-        if (i === 0) return renderSetTrack(t, i, null);
-        const prev = currentSet[i - 1];
-        const bpmDiff = Math.abs(parseFloat(t.bpm || 0) - parseFloat(prev.bpm || 0));
-        const isHarmonic = isHarmonicMatch(prev.key, t.key);
-        let status = 'success'; let icon = 'check';
-        if (!isHarmonic || bpmDiff > 8) { status = 'danger'; icon = 'alert-triangle'; }
-        else if (bpmDiff > 4) { status = 'warning'; icon = 'minus'; }
-        return renderSetTrack(t, i, { status, icon, bpmDiff, isHarmonic });
-    }).join('');
-    lucide.createIcons();
-}
-
-function renderSetTrack(t, index, transition) {
-    let transitionHtml = ''; let borderClass = 'success';
-    if (index > 0 && transition) {
-        borderClass = transition.status;
-        transitionHtml = `<div class="transition-icon ${transition.status}"><i data-lucide="${transition.icon}" class="w-4 h-4"></i></div>`;
-    } else { transitionHtml = `<div class="w-6"></div>`; }
-    return `<div class="set-track ${borderClass}">
-        ${transitionHtml}
-        <div class="camelot-badge">${t.key}</div>
-        <div class="flex-1 min-w-0">
-            <div class="font-semibold text-white truncate">${index + 1}. ${t.artist} - ${t.title}</div>
-            <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                <span>${t.bpm} BPM</span>
-                <div class="flex items-center gap-1"><span>E:</span><div class="energy-bar"><div class="energy-fill" style="width: ${t.energy * 10}%"></div></div></div>
-            </div>
-        </div>
-    </div>`;
-}
-
-document.getElementById('fixTransitionsBtn').addEventListener('click', () => {
-    if (currentSet.length < 2) { alert('Costruisci prima un set!'); return; }
-    let fixed = 0;
-    for (let i = 1; i < currentSet.length; i++) {
-        const prev = currentSet[i - 1]; const curr = currentSet[i];
-        const bpmDiff = Math.abs(parseFloat(curr.bpm || 0) - parseFloat(prev.bpm || 0));
-        const isHarmonic = isHarmonicMatch(prev.key, curr.key);
-        if (!isHarmonic || bpmDiff > 8) {
-            const unused = userLibrary.filter(u => !currentSet.includes(u));
-            let bestSwap = null; let bestScore = -999;
-            for (let u of unused) {
-                let score = 0;
-                if (isHarmonicMatch(prev.key, u.key)) score += 50;
-                if (isHarmonicMatch(u.key, currentSet[i + 1]?.key || u.key)) score += 50;
-                if (Math.abs(parseFloat(u.bpm || 0) - parseFloat(prev.bpm || 0)) < 5) score += 20;
-                if (score > bestScore) { bestScore = score; bestSwap = u; }
-            }
-            if (bestSwap && bestScore > 60) { currentSet[i] = bestSwap; fixed++; }
-        }
-    }
-    if (fixed > 0) { alert(`🛠 ${fixed} transizioni risolte!`); renderCurrentSet(); } 
-    else { alert('✅ Nessuna transizione critica.'); }
-});
-
-document.getElementById('exportSetBtn').addEventListener('click', () => {
-    if (currentSet.length === 0) { alert('Costruisci prima un set!'); return; }
-    let m3u8 = '#EXTM3U\n# PLAYLIST: AURA Set (Engine DJ)\n\n';
-    currentSet.forEach(t => {
-        m3u8 += `# BPM: ${t.bpm} | KEY: ${t.key}\n#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`;
-    });
-    downloadM3U8(m3u8, 'AURA_Set');
-});
-
 // CLOUD
 async function saveLibraryToCloud() {
     if (!supabase.isLoggedIn() || userLibrary.length === 0) return;
@@ -408,7 +225,7 @@ async function loadSavedLibrary() {
     } catch (err) { console.error(err); }
 }
 
-// TRACK MATCHER
+// TRACK MATCHER CON ALGORITMO MIGLIORATO
 const matcherDropZone = document.getElementById('matcherDropZone');
 const matcherFileInput = document.getElementById('matcherFileInput');
 ['dragenter', 'dragover'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.add('drag-active'); }); });
@@ -421,7 +238,7 @@ function handleMatcherFile(file) {
     const reader = new FileReader();
     reader.onload = function(e) {
         spotifyPlaylist = parseSpotifyExport(e.target.result, file.name);
-        if (spotifyPlaylist.length === 0) { alert('Nessuna traccia trovata.'); document.getElementById('matcherDropText').innerText = 'Carica file'; return; }
+        if (spotifyPlaylist.length === 0) { alert('Nessuna traccia trovata.'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file'; return; }
         performMatching();
     };
     reader.readAsText(file);
@@ -448,26 +265,154 @@ function parseSpotifyExport(content, filename) {
     return tracks;
 }
 
+// NORMALIZZAZIONE ARTISTA (RIGOROSA)
+function normalizeArtist(artist) {
+    if (!artist) return '';
+    return artist.toString()
+        .toLowerCase()
+        // Rimuove "feat.", "ft.", "featuring", "vs.", "x"
+        .replace(/\s*(feat\.?|ft\.?|featuring|vs\.?|x)\s+[^,;]+/gi, '')
+        // Rimuove punteggiatura
+        .replace(/[^\w\s]/g, '')
+        // Rimuove spazi multipli
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// NORMALIZZAZIONE TITOLO (FLESSIBILE)
+function normalizeTitle(title) {
+    if (!title) return '';
+    return title.toString()
+        .toLowerCase()
+        // Rimuove "feat.", "ft.", "featuring"
+        .replace(/\s*(feat\.?|ft\.?|featuring|vs\.?|x)\s+[^,;]+/gi, '')
+        // Rimuove versioni remix/extended
+        .replace(/\s*(remix|extended|radio edit|original mix|club mix|instrumental|acoustic|live|version|edit|mix)\s*/gi, '')
+        // Rimuove "(Official Video)", "(Audio)", "(Lyrics)", ecc.
+        .replace(/\s*\([^)]*(video|audio|lyrics|official|music|hd|hq)[^)]*\)/gi, '')
+        // Rimuove punteggiatura
+        .replace(/[^\w\s]/g, '')
+        // Rimuove spazi multipli
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// CALCOLO SIMILARITÀ ARTISTA (RIGOROSO)
+function artistSimilarity(artist1, artist2) {
+    const a1 = normalizeArtist(artist1);
+    const a2 = normalizeArtist(artist2);
+    
+    if (a1 === a2) return 100;
+    if (a1.length === 0 || a2.length === 0) return 0;
+    
+    // Se uno contiene l'altro completamente
+    if (a1.includes(a2) || a2.includes(a1)) {
+        const shorter = Math.min(a1.length, a2.length);
+        const longer = Math.max(a1.length, a2.length);
+        return (shorter / longer) * 100;
+    }
+    
+    // Confronto parole
+    const words1 = a1.split(' ');
+    const words2 = a2.split(' ');
+    let commonWords = 0;
+    
+    for (let w1 of words1) {
+        for (let w2 of words2) {
+            if (w1 === w2) { commonWords++; break; }
+        }
+    }
+    
+    const maxWords = Math.max(words1.length, words2.length);
+    return (commonWords / maxWords) * 100;
+}
+
+// CALCOLO SIMILARITÀ TITOLO (FLESSIBILE)
+function titleSimilarity(title1, title2) {
+    const t1 = normalizeTitle(title1);
+    const t2 = normalizeTitle(title2);
+    
+    if (t1 === t2) return 100;
+    if (t1.length === 0 || t2.length === 0) return 0;
+    
+    // Se uno contiene l'altro completamente
+    if (t1.includes(t2) || t2.includes(t1)) {
+        const shorter = Math.min(t1.length, t2.length);
+        const longer = Math.max(t1.length, t2.length);
+        return (shorter / longer) * 100;
+    }
+    
+    // Confronto parole
+    const words1 = t1.split(' ');
+    const words2 = t2.split(' ');
+    let commonWords = 0;
+    
+    for (let w1 of words1) {
+        for (let w2 of words2) {
+            if (w1 === w2) { commonWords++; break; }
+        }
+    }
+    
+    const maxWords = Math.max(words1.length, words2.length);
+    return (commonWords / maxWords) * 100;
+}
+
 function performMatching() {
     if (userLibrary.length === 0) { alert('⚠️ Prima carica la libreria!'); return; }
+    
     matchedTracks = { found: [], uncertain: [], missing: [] };
+    
     for (let sp of spotifyPlaylist) {
-        let bestMatch = null; let bestScore = 0;
+        let bestMatch = null;
+        let bestArtistScore = 0;
+        let bestTitleScore = 0;
+        
         for (let lib of userLibrary) {
-            const artistSim = stringSimilarity(sp.artist, lib.artist);
-            const titleSim = stringSimilarity(sp.title, lib.title);
-            const total = (artistSim + titleSim) / 2;
-            if (total > bestScore) { bestScore = total; bestMatch = lib; }
+            const artistSim = artistSimilarity(sp.artist, lib.artist);
+            const titleSim = titleSimilarity(sp.title, lib.title);
+            
+            // LOGICA INTELLIGENTE:
+            // 1. Artista deve matchare almeno 80% (rigoroso)
+            // 2. Titolo deve matchare almeno 60% (flessibile)
+            // 3. Se entrambi i criteri sono soddisfatti, è un match certo
+            
+            if (artistSim >= 80 && titleSim >= 60) {
+                const totalScore = (artistSim + titleSim) / 2;
+                if (totalScore > bestArtistScore + bestTitleScore) {
+                    bestMatch = lib;
+                    bestArtistScore = artistSim;
+                    bestTitleScore = titleSim;
+                }
+            }
         }
-        if (bestScore >= 85) matchedTracks.found.push({ ...sp, match: bestMatch, score: bestScore });
-        else if (bestScore >= 60) matchedTracks.uncertain.push({ ...sp, match: bestMatch, score: bestScore });
-        else matchedTracks.missing.push(sp);
+        
+        // Classifica il risultato
+        if (bestMatch && bestArtistScore >= 80 && bestTitleScore >= 60) {
+            matchedTracks.found.push({ 
+                ...sp, 
+                match: bestMatch, 
+                artistScore: bestArtistScore,
+                titleScore: bestTitleScore
+            });
+        } else if (bestMatch && bestArtistScore >= 60) {
+            // Artista simile ma titolo diverso -> incerto
+            matchedTracks.uncertain.push({ 
+                ...sp, 
+                match: bestMatch,
+                artistScore: bestArtistScore,
+                titleScore: bestTitleScore
+            });
+        } else {
+            // Nessun match valido
+            matchedTracks.missing.push(sp);
+        }
     }
+    
     renderMatcherResults();
 }
 
 function renderMatcherResults() {
-    document.getElementById('matcherDropText').innerText = 'Carica file';
+    document.getElementById('matcherDropText').innerText = 'Trascina qui il file';
     document.getElementById('matcherResults').classList.remove('hidden');
     document.getElementById('matcherTotal').innerText = spotifyPlaylist.length;
     document.getElementById('matcherFound').innerText = matchedTracks.found.length;
@@ -482,14 +427,14 @@ function renderMatcherResults() {
 function renderFoundList() {
     const list = document.getElementById('foundList');
     if (matchedTracks.found.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match.</p>'; return; }
-    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (${Math.round(t.score)}%)</div></div></div>`).join('');
+    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Artista: ${Math.round(t.artistScore)}%, Titolo: ${Math.round(t.titleScore)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
 function renderUncertainList() {
     const list = document.getElementById('uncertainList');
     if (matchedTracks.uncertain.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun incerto.</p>'; return; }
-    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (${Math.round(t.score)}%)</div></div></div>`).join('');
+    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Artista: ${Math.round(t.artistScore)}%, Titolo: ${Math.round(t.titleScore)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
@@ -564,37 +509,3 @@ document.getElementById('exportM3U8Btn').addEventListener('click', () => {
     });
     downloadM3U8(m3u8, 'AURA_Charts');
 });
-
-// SPOTIFY LINK
-document.getElementById('fetchSpotifyBtn').addEventListener('click', async () => {
-    const link = document.getElementById('spotifyLinkInput').value.trim();
-    if (!link) { alert('Incolla prima il link Spotify!'); return; }
-    const playlistId = extractSpotifyPlaylistId(link);
-    if (!playlistId) { alert('Link non valido. Deve essere tipo: https://open.spotify.com/playlist/XXXXX'); return; }
-    document.getElementById('matcherDropText').innerText = 'Caricamento da Spotify...';
-    try {
-        const response = await fetch(`https://api.spotifyplaylist.top/playlist/${playlistId}`);
-        if (!response.ok) throw new Error('API non disponibile');
-        const data = await response.json();
-        if (!data.tracks || data.tracks.length === 0) throw new Error('Nessuna traccia');
-        spotifyPlaylist = data.tracks.map(t => ({
-            artist: t.artist || t.artists?.[0]?.name || 'Unknown',
-            title: t.title || t.name || 'Unknown',
-            original: `${t.artist || t.artists?.[0]?.name || 'Unknown'} - ${t.title || t.name || 'Unknown'}`
-        }));
-        if (spotifyPlaylist.length === 0) throw new Error('Nessuna traccia');
-        performMatching();
-    } catch (err) {
-        document.getElementById('matcherDropText').innerText = 'Carica file';
-        alert(`⚠️ Impossibile caricare da Spotify.\n\nMotivo: ${err.message}\n\nUsa il Metodo 2: esporta la playlist in .txt o .csv e caricala.`);
-    }
-});
-
-function extractSpotifyPlaylistId(url) {
-    const patterns = [/spotify\.com\/playlist\/([a-zA-Z0-9]+)/, /spotify:user:[^:]+:playlist:([a-zA-Z0-9]+)/, /^([a-zA-Z0-9]{22})$/];
-    for (let pattern of patterns) {
-        const match = url.match(pattern);
-        if (match) return match[1];
-    }
-    return null;
-}

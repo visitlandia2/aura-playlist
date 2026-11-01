@@ -68,12 +68,11 @@
                 <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
                     <i data-lucide="upload" class="w-5 h-5 text-aura-cyan"></i> 1. Importa Libreria (Engine DJ / Rekordbox)
                 </h2>
-                <p class="text-slate-400 mb-6 text-sm">Esporta la tua playlist da <span class="text-aura-gold font-bold">Engine DJ</span> in formato <span class="text-aura-gold font-mono">.m3u8</span> o da Rekordbox in <span class="text-slate-300 font-mono">.xml</span>. La libreria verrà salvata nel cloud.</p>
+                <p class="text-slate-400 mb-6 text-sm">Esporta la tua collezione da <span class="text-aura-gold font-bold">Engine DJ</span> in formato <span class="text-aura-gold font-mono">.m3u8</span> o da Rekordbox in <span class="text-slate-300 font-mono">.xml</span>.</p>
                 <div id="dropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-10 text-center hover:border-aura-gold/50 hover:bg-aura-gold/5 transition-all cursor-pointer relative">
                     <input type="file" id="fileInput" accept=".xml,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
                     <i data-lucide="music" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
                     <p class="text-slate-300 font-medium" id="dropText">Trascina qui il file .m3u8 o .xml</p>
-                    <p class="text-slate-500 text-xs mt-2">Supporta nativamente Engine DJ (.m3u8) e Rekordbox (.xml)</p>
                 </div>
                 <div id="resultArea" class="hidden mt-6 bg-slate-900/50 rounded-lg p-4 border border-slate-700">
                     <h3 class="text-aura-gold font-semibold mb-2 flex items-center gap-2">
@@ -85,77 +84,125 @@
 
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="wand-2" class="w-6 h-6 text-aura-gold"></i> 2. AURA Set Builder (Motore Armonico)
+                    <i data-lucide="folder-tree" class="w-6 h-6 text-aura-gold"></i> 2. Le Tue Playlist (come Engine DJ)
                 </h2>
-                <p class="text-slate-400 mb-6 text-sm">Seleziona le tracce, scegli la "Night Shape" e lascia che AURA le ordini per armonia (Camelot), BPM progressivo e curva energetica, pronto per l'import in Engine OS.</p>
+                <p class="text-slate-400 mb-6 text-sm">Tutte le tue playlist organizzate ad albero. Clicca sulle cartelle per espanderle.</p>
+                
+                <div class="mb-4 flex gap-2 flex-wrap">
+                    <button id="expandAllBtn" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm">📂 Espandi Tutto</button>
+                    <button id="collapseAllBtn" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm">📁 Comprimi Tutto</button>
+                    <button id="selectAllPlaylistsBtn" class="bg-aura-gold hover:bg-aura-gold/80 text-slate-900 px-4 py-2 rounded-lg text-sm font-bold">✅ Seleziona Tutte</button>
+                </div>
+
+                <div id="playlistTree" class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 max-h-[600px] overflow-y-auto">
+                    <p class="text-center text-slate-500 py-8">Carica la libreria per vedere le playlist.</p>
+                </div>
+
+                <div class="mt-4 p-3 bg-aura-gold/10 border border-aura-gold/30 rounded-lg">
+                    <p class="text-aura-gold text-sm font-semibold">Tracce selezionate: <span id="selectedTracksCount">0</span></p>
+                </div>
+            </section>
+
+            <section class="glass rounded-2xl p-8">
+                <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
+                    <i data-lucide="wand-2" class="w-6 h-6 text-aura-gold"></i> 3. AURA Set Builder
+                </h2>
+                <p class="text-slate-400 mb-6 text-sm">Le tracce selezionate vengono ordinate per armonia (Camelot), BPM e curva energetica.</p>
                 
                 <div class="grid md:grid-cols-3 gap-4 mb-6">
                     <div>
                         <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Night Shape</label>
                         <select id="nightShape" class="w-full bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
-                            <option value="full">🌅 Full Journey (Soft → Peak → Closing)</option>
-                            <option value="warmup">🥂 Warm-up & Cocktail (30% → 50%)</option>
-                            <option value="peak">🔥 Peak Time (70% → 90% → 70%)</option>
-                            <option value="closing">🌙 Closing (60% → 40%)</option>
+                            <option value="full">🌅 Full Journey</option>
+                            <option value="warmup">🥂 Warm-up</option>
+                            <option value="peak">🔥 Peak Time</option>
+                            <option value="closing">🌙 Closing</option>
                         </select>
                     </div>
                     <div class="flex items-end">
-                        <button id="buildSetBtn" class="w-full bg-gradient-to-r from-aura-gold to-yellow-600 text-aura-dark font-bold py-2 rounded-lg hover:shadow-lg hover:shadow-aura-gold/20 transition-all flex items-center justify-center gap-2">
+                        <button id="buildSetBtn" class="w-full bg-gradient-to-r from-aura-gold to-yellow-600 text-aura-dark font-bold py-2 rounded-lg flex items-center justify-center gap-2">
                             <i data-lucide="sparkles" class="w-4 h-4"></i> 🎛 Build the Night
                         </button>
                     </div>
                     <div class="flex items-end">
-                        <button id="fixTransitionsBtn" class="w-full bg-slate-800 border border-slate-600 text-white font-bold py-2 rounded-lg hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
-                            <i data-lucide="wrench" class="w-4 h-4"></i> 🛠 Fix Critical Transitions
+                        <button id="fixTransitionsBtn" class="w-full bg-slate-800 border border-slate-600 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2">
+                            <i data-lucide="wrench" class="w-4 h-4"></i> 🛠 Fix Transitions
                         </button>
                     </div>
                 </div>
 
                 <div id="setBuilderList" class="space-y-2 max-h-[500px] overflow-y-auto pr-2 mb-4">
-                    <p class="text-center text-slate-500 py-8">Carica la libreria e seleziona le tracce per iniziare a costruire il set.</p>
+                    <p class="text-center text-slate-500 py-8">Seleziona tracce dalla sezione 2 e clicca "Build the Night".</p>
                 </div>
 
                 <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
-                    <button id="exportSetBtn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-aura-cyan/20 transition-all">
-                        <i data-lucide="download" class="w-4 h-4"></i> Esporta Set per Engine DJ (.m3u8)
+                    <button id="exportSetBtn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i> Esporta Set (.m3u8)
                     </button>
                 </div>
             </section>
 
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="git-compare" class="w-6 h-6 text-aura-gold"></i> 3. Track Matcher — Confronta con Spotify
+                    <i data-lucide="git-compare" class="w-6 h-6 text-aura-gold"></i> 4. Track Matcher
                 </h2>
-                <p class="text-slate-400 mb-6 text-sm">Carica una playlist Spotify esportata (.txt/.csv) e scopri quante tracce hai già nel tuo database Engine DJ.</p>
-                <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-aura-gold/50 hover:bg-aura-gold/5 transition-all cursor-pointer relative mb-6">
-                    <input type="file" id="matcherFileInput" accept=".txt,.csv,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                    <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
-                    <p class="text-slate-300 font-medium" id="matcherDropText">Carica la playlist Spotify esportata</p>
+                <p class="text-slate-400 mb-6 text-sm">Incolla un link Spotify o carica un file. Matching fedele artista + titolo.</p>
+                
+                <div class="mb-6">
+                    <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Metodo 1: Link Spotify (veloce)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="spotifyLinkInput" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
+                        <button id="fetchSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2">
+                            <i data-lucide="link" class="w-4 h-4"></i> Carica
+                        </button>
+                    </div>
                 </div>
-                <div id="matcherResults" class="hidden">
+
+                <div class="mb-6 flex items-center gap-2">
+                    <div class="flex-1 h-px bg-slate-700"></div>
+                    <span class="text-slate-500 text-sm">oppure</span>
+                    <div class="flex-1 h-px bg-slate-700"></div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Metodo 2: File esportato</label>
+                    <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-aura-gold/50 hover:bg-aura-gold/5 transition-all cursor-pointer relative">
+                        <input type="file" id="matcherFileInput" accept=".txt,.csv,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                        <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
+                        <p class="text-slate-300 font-medium" id="matcherDropText">Carica file .txt o .csv</p>
+                    </div>
+                </div>
+
+                <div id="matcherResults" class="hidden mt-6">
                     <div class="grid grid-cols-3 gap-4 mb-6">
                         <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 text-center">
                             <div class="text-3xl font-bold text-aura-cyan" id="matcherTotal">0</div>
-                            <div class="text-xs text-slate-400 mt-1">Tracce totali</div>
+                            <div class="text-xs text-slate-400 mt-1">Totali</div>
                         </div>
                         <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
                             <div class="text-3xl font-bold text-green-400" id="matcherFound">0</div>
-                            <div class="text-xs text-slate-400 mt-1">Già in libreria</div>
+                            <div class="text-xs text-slate-400 mt-1">Match certi</div>
                         </div>
-                        <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-center">
-                            <div class="text-3xl font-bold text-red-400" id="matcherMissing">0</div>
-                            <div class="text-xs text-slate-400 mt-1">Da recuperare</div>
+                        <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold text-yellow-400" id="matcherUncertain">0</div>
+                            <div class="text-xs text-slate-400 mt-1">Incerti</div>
                         </div>
                     </div>
-                    <div class="flex gap-2 mb-4">
-                        <button id="showFoundBtn" class="matcher-tab active px-4 py-2 bg-green-500/20 border border-green-500 text-green-400 rounded-lg text-sm font-semibold">Presenti (<span id="foundCount">0</span>)</button>
-                        <button id="showMissingBtn" class="matcher-tab px-4 py-2 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-sm">Mancanti (<span id="missingCount">0</span>)</button>
+                    <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-center mb-6">
+                        <div class="text-3xl font-bold text-red-400" id="matcherMissing">0</div>
+                        <div class="text-xs text-slate-400 mt-1">Mancanti</div>
+                    </div>
+                    <div class="flex gap-2 mb-4 flex-wrap">
+                        <button id="showFoundBtn" class="matcher-tab active px-4 py-2 bg-green-500/20 border border-green-500 text-green-400 rounded-lg text-sm font-semibold">✅ Certi (<span id="foundCount">0</span>)</button>
+                        <button id="showUncertainBtn" class="matcher-tab px-4 py-2 bg-yellow-500/20 border border-yellow-500 text-yellow-400 rounded-lg text-sm">⚠️ Incerti (<span id="uncertainCount">0</span>)</button>
+                        <button id="showMissingBtn" class="matcher-tab px-4 py-2 bg-red-500/20 border border-red-500 text-red-400 rounded-lg text-sm">❌ Mancanti (<span id="missingCount">0</span>)</button>
                     </div>
                     <div id="foundList" class="space-y-2 max-h-80 overflow-y-auto pr-2 mb-4"></div>
+                    <div id="uncertainList" class="hidden space-y-2 max-h-80 overflow-y-auto pr-2 mb-4"></div>
                     <div id="missingList" class="hidden space-y-2 max-h-80 overflow-y-auto pr-2 mb-4"></div>
                     <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
                         <button id="exportMissingBtn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                            <i data-lucide="download" class="w-4 h-4"></i> Esporta "Mancanti" con link Spotify/Tidal
+                            <i data-lucide="download" class="w-4 h-4"></i> Esporta Mancanti
                         </button>
                     </div>
                 </div>
@@ -163,23 +210,67 @@
 
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="globe" class="w-6 h-6 text-aura-cyan"></i> 4. Global Charts
+                    <i data-lucide="globe" class="w-6 h-6 text-aura-cyan"></i> 5. Global Charts
                 </h2>
                 <div class="flex flex-wrap gap-2 mb-6">
                     <select id="countrySelect" class="bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
-                        <option value="0">🌍 Mondo</option><option value="13">🇺🇸 USA</option><option value="14">🇬🇧 UK</option>
-                        <option value="18">🇩🇪 Germania</option><option value="19">🇫🇷 Francia</option><option value="20">🇮🇹 Italia</option>
-                        <option value="53">🇵🇱 Polonia</option><option value="54">🇧🇪 Belgio</option><option value="55">🇳🇱 Paesi Bassi</option>
+                        <optgroup label="🌍 MONDO">
+                            <option value="0">🌍 Global</option>
+                        </optgroup>
+                        <optgroup label="🇪🇺 EUROPA OVEST">
+                            <option value="14">🇬🇧 UK</option>
+                            <option value="18">🇩🇪 Germania</option>
+                            <option value="19">🇫🇷 Francia</option>
+                            <option value="20">🇮🇹 Italia</option>
+                            <option value="21">🇪🇸 Spagna</option>
+                            <option value="23">🇮🇪 Irlanda</option>
+                            <option value="24">🇧🇪 Belgio</option>
+                            <option value="25">🇦🇹 Austria</option>
+                            <option value="26">🇨🇭 Svizzera</option>
+                            <option value="27">🇳🇱 Olanda</option>
+                            <option value="30">🇵🇹 Portogallo</option>
+                            <option value="31">🇬🇷 Grecia</option>
+                            <option value="32">🇩🇰 Danimarca</option>
+                            <option value="33">🇸🇪 Svezia</option>
+                            <option value="34">🇳🇴 Norvegia</option>
+                            <option value="35">🇫🇮 Finlandia</option>
+                        </optgroup>
+                        <optgroup label="🇪🇺 EUROPA EST">
+                            <option value="36">🇵🇱 Polonia</option>
+                            <option value="37">🇨🇿 Rep. Ceca</option>
+                            <option value="38">🇭🇺 Ungheria</option>
+                            <option value="40">🇷🇴 Romania</option>
+                            <option value="41">🇧🇬 Bulgaria</option>
+                            <option value="42">🇭🇷 Croazia</option>
+                            <option value="43">🇷🇸 Serbia</option>
+                            <option value="44">🇸🇰 Slovacchia</option>
+                            <option value="45">🇸🇮 Slovenia</option>
+                            <option value="46">🇪🇪 Estonia</option>
+                            <option value="47">🇱🇻 Lettonia</option>
+                            <option value="48">🇱🇹 Lituania</option>
+                            <option value="49">🇺🇦 Ucraina</option>
+                            <option value="50">🇷🇺 Russia</option>
+                            <option value="53">🇦🇱 Albania</option>
+                        </optgroup>
+                        <optgroup label="🌎 ALTRO">
+                            <option value="13">🇺🇸 USA</option>
+                            <option value="56">🇧🇷 Brasile</option>
+                            <option value="57">🇲🇽 Messico</option>
+                            <option value="59">🇯🇵 Giappone</option>
+                            <option value="61">🇦🇺 Australia</option>
+                            <option value="62">🇹🇷 Turchia</option>
+                        </optgroup>
                     </select>
-                    <button id="loadChartsBtn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-6 py-2 rounded-lg hover:shadow-lg transition-all flex items-center gap-2">
+                    <button id="loadChartsBtn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-6 py-2 rounded-lg flex items-center gap-2">
                         <i data-lucide="search" class="w-4 h-4"></i> Carica
                     </button>
                 </div>
                 <div id="chartsLoading" class="hidden text-center py-8"><div class="inline-block w-8 h-8 border-4 border-aura-cyan border-t-transparent rounded-full animate-spin"></div></div>
+                <div id="chartsError" class="hidden text-center py-8 text-red-400"></div>
                 <div id="chartsList" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
                 <div id="chartsActions" class="hidden mt-6 pt-6 border-t border-slate-700">
                     <button id="exportM3U8Btn" class="bg-gradient-to-r from-aura-tidal to-blue-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                        <i data-lucide="download" class="w-4 h-4"></i> Esporta .m3u8 per Engine DJ / Tidal
+                        <i data-lucide="download" class="w-4 h-4"></i> Esporta .m3u8
                     </button>
                 </div>
             </section>

@@ -7,6 +7,7 @@ let spotifyPlaylist = [];
 let matchedTracks = { found: [], uncertain: [], missing: [] };
 let currentCharts = [];
 
+// ==================== CAMELOT ====================
 const CAMELOT_MAP = {
     'am': '8A', 'a': '8A', 'em': '9A', 'e': '9A', 'bm': '10A', 'b': '10A',
     'f#m': '11A', 'gbm': '11A', 'c#m': '12A', 'dbm': '12A',
@@ -32,93 +33,86 @@ function getEnergy(bpm) {
     return 9;
 }
 
-// ==================== NORMALIZZAZIONE AVANZATA ====================
-function normalizeText(text, mode = 'normal') {
+function isHarmonicMatch(key1, key2) {
+    if (key1 === '?' || key2 === '?') return true;
+    const n1 = parseInt(key1);
+    const n2 = parseInt(key2);
+    const l1 = key1.slice(-1);
+    const l2 = key2.slice(-1);
+    if (key1 === key2) return true;
+    if (Math.abs(n1 - n2) === 1 || Math.abs(n1 - n2) === 11) return true;
+    if (n1 === n2 && l1 !== l2) return true;
+    return false;
+}
+
+// ==================== NORMALIZZAZIONE SUPER FLESSIBILE ====================
+const NOISE_WORDS = [
+    'remaster', 'remastered', '2019', '2020', '2021', '2022', '2023', '2024', '2025',
+    'official video', 'official audio', 'lyric video', 'audio', 'video',
+    'feat', 'ft', 'featuring', 'vs', 'x',
+    'remix', 'extended', 'radio edit', 'original mix', 'club mix', 'instrumental',
+    'acoustic', 'live', 'version', 'edit', 'mix', 'clean', 'explicit',
+    'from', 'soundtrack', 'album version', 'single version',
+    'hq', 'hd', '4k', 'official'
+];
+
+function normalizeText(text, strictMode = false) {
     if (!text) return '';
-    let normalized = text.toString();
+    let normalized = text.toString().toLowerCase();
     
-    // 1. Rimuovi tutto ciò che è tra parentesi (tonde, quadre, graffe)
-    normalized = normalized.replace(/\[.*?\]/g, '');
-    normalized = normalized.replace(/\(.*?\)/g, '');
-    normalized = normalized.replace(/\{.*?\}/g, '');
+    // Rimuovi caratteri speciali
+    normalized = normalized.replace(/[~"'`´^]/g, ' ');
+    normalized = normalized.replace(/\s*-\s*/g, ' ');
+    normalized = normalized.replace(/\s*\(\s*/g, ' ');
+    normalized = normalized.replace(/\s*\)\s*/g, ' ');
+    normalized = normalized.replace(/\s*\[\s*/g, ' ');
+    normalized = normalized.replace(/\s*\]\s*/g, ' ');
     
-    // 2. Rimuovi virgolette
-    normalized = normalized.replace(/[""'']/g, '');
+    // Rimuovi feat, ft, featuring, vs, x
+    normalized = normalized.replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi, ' ');
     
-    // 3. Rimuovi estensioni file e info tecniche
-    normalized = normalized.replace(/\.(mp3|wav|flac|aac|m4a|ogg|wma)$/i, '');
-    normalized = normalized.replace(/\s*-\s*\d{3}\s*$/i, ''); // Rimuove " - 039" alla fine
-    
-    // 4. Normalizza separatori artisti
-    normalized = normalized.replace(/\s*&\s*/g, ' and ');
-    normalized = normalized.replace(/\s*feat\.?\s*/gi, ' ');
-    normalized = normalized.replace(/\s*ft\.?\s*/gi, ' ');
-    normalized = normalized.replace(/\s*featuring\s*/gi, ' ');
-    normalized = normalized.replace(/\s*vs\.?\s*/gi, ' ');
-    normalized = normalized.replace(/\s*x\s+/gi, ' ');
-    normalized = normalized.replace(/\s*,\s*/g, ' ');
-    
-    // 5. Rimuovi parole chiave comuni (solo se mode !== 'strict')
-    if (mode !== 'strict') {
-        normalized = normalized.replace(/\s*(remix|extended|radio edit|original mix|club mix|instrumental|acoustic|live|version|edit|mix|clean|explicit|official audio|official video|official lyric video|lyric video|audio|video|hd|hq|4k)\s*/gi, '');
+    if (!strictMode) {
+        for (let word of NOISE_WORDS) {
+            const regex = new RegExp('\\b' + word + '\\b', 'gi');
+            normalized = normalized.replace(regex, ' ');
+        }
     }
     
-    // 6. Normalizza accenti e caratteri speciali
-    const accents = {
-        'à': 'a', 'á': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a',
-        'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
-        'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
-        'ò': 'o', 'ó': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o',
-        'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
-        'ñ': 'n', 'ç': 'c', 'ß': 'ss',
-        'ø': 'o', 'æ': 'ae', 'œ': 'oe'
-    };
-    for (let [accented, normal] of Object.entries(accents)) {
-        normalized = normalized.replace(new RegExp(accented, 'g'), normal);
-    }
-    
-    // 7. Converti in minuscolo e rimuovi caratteri speciali
-    normalized = normalized.toLowerCase();
-    normalized = normalized.replace(/[^\w\s]/g, '');
-    
-    // 8. Rimuovi spazi multipli
+    normalized = normalized.replace(/[^\w\s]/g, ' ');
     normalized = normalized.replace(/\s+/g, ' ').trim();
     
     return normalized;
 }
 
-// ==================== MATCHING MIGLIORATO ====================
 function calculateMatchScore(spotifyTrack, libTrack) {
-    // Normalizza artista in modo strict (non rimuovere "feat", "&", ecc.)
-    const spotifyArtistStrict = normalizeText(spotifyTrack.artist, 'strict');
-    const libArtistStrict = normalizeText(libTrack.artist, 'strict');
+    const spotifyArtist = normalizeText(spotifyTrack.artist, true);
+    const libArtist = normalizeText(libTrack.artist, true);
     
-    // Normalizza artista in modo normal (rimuove "feat", "&", ecc.)
-    const spotifyArtistNormal = normalizeText(spotifyTrack.artist, 'normal');
-    const libArtistNormal = normalizeText(libTrack.artist, 'normal');
+    const spotifyTitle = normalizeText(spotifyTrack.title, false);
+    const libTitle = normalizeText(libTrack.title, false);
     
-    // Normalizza titolo
-    const spotifyTitle = normalizeText(spotifyTrack.title, 'normal');
-    const libTitle = normalizeText(libTrack.title, 'normal');
-    
-    // Calcola similarità con entrambi i metodi
-    const artistSimilarityStrict = stringSimilarity(spotifyArtistStrict, libArtistStrict);
-    const artistSimilarityNormal = stringSimilarity(spotifyArtistNormal, libArtistNormal);
-    
-    // Usa il punteggio più alto tra i due metodi
-    const artistSimilarity = Math.max(artistSimilarityStrict, artistSimilarityNormal);
-    
+    const artistSimilarity = stringSimilarity(spotifyArtist, libArtist);
     const titleSimilarity = stringSimilarity(spotifyTitle, libTitle);
     
-    // Score totale pesato: 75% artista, 25% titolo
-    const totalScore = (artistSimilarity * 0.75) + (titleSimilarity * 0.25);
+    let artistWeight, titleWeight;
+    
+    if (artistSimilarity >= 90) {
+        artistWeight = 0.80;
+        titleWeight = 0.20;
+    } else if (artistSimilarity >= 70) {
+        artistWeight = 0.60;
+        titleWeight = 0.40;
+    } else {
+        artistWeight = 0.50;
+        titleWeight = 0.50;
+    }
+    
+    const totalScore = (artistSimilarity * artistWeight) + (titleSimilarity * titleWeight);
     
     return {
         total: totalScore,
         artist: artistSimilarity,
-        title: titleSimilarity,
-        artistStrict: artistSimilarityStrict,
-        artistNormal: artistSimilarityNormal
+        title: titleSimilarity
     };
 }
 
@@ -129,16 +123,14 @@ function stringSimilarity(str1, str2) {
     if (s1 === s2) return 100;
     if (s1.length === 0 || s2.length === 0) return 0;
     
-    // Se uno contiene l'altro completamente
     if (s1.includes(s2) || s2.includes(s1)) {
         const shorter = Math.min(s1.length, s2.length);
         const longer = Math.max(s1.length, s2.length);
         return (shorter / longer) * 100;
     }
     
-    // Algoritmo di similarità basato su parole comuni
-    const words1 = s1.split(' ');
-    const words2 = s2.split(' ');
+    const words1 = s1.split(' ').filter(w => w.length > 1);
+    const words2 = s2.split(' ').filter(w => w.length > 1);
     let commonWords = 0;
     
     for (let w1 of words1) {
@@ -148,6 +140,7 @@ function stringSimilarity(str1, str2) {
     }
     
     const maxWords = Math.max(words1.length, words2.length);
+    if (maxWords === 0) return 0;
     return (commonWords / maxWords) * 100;
 }
 
@@ -207,7 +200,7 @@ function showDashboard() {
 function logout() { supabase.signOut(); document.getElementById('dashboardScreen').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); hideMessage(); }
 if (supabase.isLoggedIn()) showDashboard(); else updateAuthUI();
 
-// IMPORT LIBRERIA
+// ==================== IMPORT LIBRERIA ====================
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 ['dragenter', 'dragover'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); }); });
@@ -346,7 +339,7 @@ document.getElementById('selectAllPlaylistsBtn').addEventListener('click', () =>
     updateSelectedCount();
 });
 
-// CLOUD
+// ==================== CLOUD ====================
 async function saveLibraryToCloud() {
     if (!supabase.isLoggedIn() || userLibrary.length === 0) return;
     try {
@@ -374,7 +367,7 @@ async function loadSavedLibrary() {
     } catch (err) { console.error(err); }
 }
 
-// TRACK MATCHER (MIGLIORATO)
+// ==================== TRACK MATCHER ====================
 const matcherDropZone = document.getElementById('matcherDropZone');
 const matcherFileInput = document.getElementById('matcherFileInput');
 ['dragenter', 'dragover'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.add('drag-active'); }); });
@@ -431,14 +424,14 @@ function performMatching() {
             }
         }
         
-        // LOGICA DI MATCHING MIGLIORATA E PIÙ FLESSIBILE:
-        // - Match sicuro: artista >= 85% (molto flessibile sui titoli)
-        // - Match possibile: artista >= 75% E titolo >= 40%
-        // - Mancante: tutto il resto
+        // LOGICA:
+        // Match sicuro: autore >= 85% (indipendentemente dal titolo)
+        // Match possibile: autore >= 70% E totale >= 50%
+        // Mancante: tutto il resto
         
         if (bestScore.artist >= 85) {
             matchedTracks.found.push({ ...sp, match: bestMatch, score: bestScore });
-        } else if (bestScore.artist >= 75 && bestScore.title >= 40) {
+        } else if (bestScore.artist >= 70 && bestScore.total >= 50) {
             matchedTracks.uncertain.push({ ...sp, match: bestMatch, score: bestScore });
         } else {
             matchedTracks.missing.push(sp);
@@ -464,14 +457,14 @@ function renderMatcherResults() {
 function renderFoundList() {
     const list = document.getElementById('foundList');
     if (matchedTracks.found.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match trovato.</p>'; return; }
-    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Titolo: ${Math.round(t.score.title)}%)</div></div></div>`).join('');
+    list.innerHTML = matchedTracks.found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Totale: ${Math.round(t.score.total)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
 function renderUncertainList() {
     const list = document.getElementById('uncertainList');
     if (matchedTracks.uncertain.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match incerto.</p>'; return; }
-    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Titolo: ${Math.round(t.score.title)}%)</div></div></div>`).join('');
+    list.innerHTML = matchedTracks.uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Totale: ${Math.round(t.score.total)}%)</div></div></div>`).join('');
     lucide.createIcons();
 }
 
@@ -512,7 +505,7 @@ function downloadM3U8(content, filename) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// GLOBAL CHARTS (iTunes API)
+// ==================== GLOBAL CHARTS (iTunes API) ====================
 document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     const countryId = document.getElementById('countrySelect').value;
     const loading = document.getElementById('chartsLoading');
@@ -527,14 +520,20 @@ document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     
     try {
         const url = `https://itunes.apple.com/${countryId}/rss/topsongs/limit=50/json`;
+        
         const response = await fetch(url);
         
-        if (!response.ok) throw new Error(`Errore: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Errore: ${response.status}`);
+        }
         
         const data = await response.json();
+        
         const entries = data.feed?.entry || [];
         
-        if (entries.length === 0) throw new Error('Nessuna traccia trovata');
+        if (entries.length === 0) {
+            throw new Error('Nessuna traccia trovata');
+        }
         
         currentCharts = entries.map((entry, idx) => {
             const artist = entry['im:artist']?.label || entry['im:artist'] || 'Unknown';

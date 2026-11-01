@@ -23,7 +23,7 @@
                 </div>
             </div>
             <h1 class="text-3xl font-bold text-center mb-2">AURA</h1>
-            <p class="text-slate-400 text-center mb-8">Playlist Generation & Set Builder<br><span class="text-aura-gold text-sm">Ottimizzato per Engine DJ & Rekordbox</span></p>
+            <p class="text-slate-400 text-center mb-8">Playlist Generation<br><span class="text-aura-gold text-sm">Ottimizzato per Engine DJ & Rekordbox</span></p>
             <div id="authMessage" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
             <form id="loginForm" class="space-y-4">
                 <div class="relative">
@@ -64,6 +64,7 @@
 
         <main class="max-w-6xl mx-auto px-6 py-10 flex-1 space-y-8">
             
+            <!-- SEZIONE 1: IMPORTA LIBRERIA -->
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
                     <i data-lucide="upload" class="w-5 h-5 text-aura-cyan"></i> 1. Importa Libreria (Engine DJ / Rekordbox)
@@ -82,6 +83,7 @@
                 </div>
             </section>
 
+            <!-- SEZIONE 2: LE TUE PLAYLIST -->
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
                     <i data-lucide="folder-tree" class="w-6 h-6 text-aura-gold"></i> 2. Le Tue Playlist (come Engine DJ)
@@ -103,77 +105,24 @@
                 </div>
             </section>
 
+            <!-- SEZIONE 3: TRACK MATCHER (MIGLIORATO) -->
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="wand-2" class="w-6 h-6 text-aura-gold"></i> 3. AURA Set Builder
+                    <i data-lucide="git-compare" class="w-6 h-6 text-aura-gold"></i> 3. Track Matcher — Confronta Playlist
                 </h2>
-                <p class="text-slate-400 mb-6 text-sm">Le tracce selezionate vengono ordinate per armonia (Camelot), BPM e curva energetica.</p>
-                
-                <div class="grid md:grid-cols-3 gap-4 mb-6">
-                    <div>
-                        <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Night Shape</label>
-                        <select id="nightShape" class="w-full bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
-                            <option value="full">🌅 Full Journey</option>
-                            <option value="warmup">🥂 Warm-up</option>
-                            <option value="peak">🔥 Peak Time</option>
-                            <option value="closing">🌙 Closing</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end">
-                        <button id="buildSetBtn" class="w-full bg-gradient-to-r from-aura-gold to-yellow-600 text-aura-dark font-bold py-2 rounded-lg flex items-center justify-center gap-2">
-                            <i data-lucide="sparkles" class="w-4 h-4"></i> 🎛 Build the Night
-                        </button>
-                    </div>
-                    <div class="flex items-end">
-                        <button id="fixTransitionsBtn" class="w-full bg-slate-800 border border-slate-600 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2">
-                            <i data-lucide="wrench" class="w-4 h-4"></i> 🛠 Fix Transitions
-                        </button>
-                    </div>
-                </div>
-
-                <div id="setBuilderList" class="space-y-2 max-h-[500px] overflow-y-auto pr-2 mb-4">
-                    <p class="text-center text-slate-500 py-8">Seleziona tracce dalla sezione 2 e clicca "Build the Night".</p>
-                </div>
-
-                <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
-                    <button id="exportSetBtn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                        <i data-lucide="download" class="w-4 h-4"></i> Esporta Set (.m3u8)
-                    </button>
-                </div>
-            </section>
-
-            <section class="glass rounded-2xl p-8">
-                <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="git-compare" class="w-6 h-6 text-aura-gold"></i> 4. Track Matcher
-                </h2>
-                <p class="text-slate-400 mb-6 text-sm">Incolla un link Spotify o carica un file. Matching fedele artista + titolo.</p>
+                <p class="text-slate-400 mb-6 text-sm">Carica una playlist esportata (.m3u8, .txt, .csv) e scopri quali tracce hai già. <span class="text-aura-gold font-semibold">Matching intelligente: artista rigoroso, titolo flessibile.</span></p>
                 
                 <div class="mb-6">
-                    <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Metodo 1: Link Spotify (veloce)</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="spotifyLinkInput" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
-                        <button id="fetchSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2">
-                            <i data-lucide="link" class="w-4 h-4"></i> Carica
-                        </button>
-                    </div>
-                </div>
-
-                <div class="mb-6 flex items-center gap-2">
-                    <div class="flex-1 h-px bg-slate-700"></div>
-                    <span class="text-slate-500 text-sm">oppure</span>
-                    <div class="flex-1 h-px bg-slate-700"></div>
-                </div>
-
-                <div>
-                    <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Metodo 2: File esportato</label>
+                    <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Carica playlist da confrontare</label>
                     <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-aura-gold/50 hover:bg-aura-gold/5 transition-all cursor-pointer relative">
                         <input type="file" id="matcherFileInput" accept=".txt,.csv,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
                         <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
-                        <p class="text-slate-300 font-medium" id="matcherDropText">Carica file .txt o .csv</p>
+                        <p class="text-slate-300 font-medium" id="matcherDropText">Trascina qui il file .m3u8, .txt o .csv</p>
+                        <p class="text-slate-500 text-xs mt-2">💡 Usa TuneMyMusic per esportare playlist da Spotify</p>
                     </div>
                 </div>
 
-                <div id="matcherResults" class="hidden mt-6">
+                <div id="matcherResults" class="hidden">
                     <div class="grid grid-cols-3 gap-4 mb-6">
                         <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 text-center">
                             <div class="text-3xl font-bold text-aura-cyan" id="matcherTotal">0</div>
@@ -208,9 +157,10 @@
                 </div>
             </section>
 
+            <!-- SEZIONE 4: GLOBAL CHARTS -->
             <section class="glass rounded-2xl p-8">
                 <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="globe" class="w-6 h-6 text-aura-cyan"></i> 5. Global Charts
+                    <i data-lucide="globe" class="w-6 h-6 text-aura-cyan"></i> 4. Global Charts
                 </h2>
                 <div class="flex flex-wrap gap-2 mb-6">
                     <select id="countrySelect" class="bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">

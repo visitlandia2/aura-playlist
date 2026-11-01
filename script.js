@@ -475,30 +475,85 @@ function downloadM3U8(content, filename) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// GLOBAL CHARTS
+// ==================== GLOBAL CHARTS (CON PROXY CORS) ====================
 document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     const countryId = document.getElementById('countrySelect').value;
     const loading = document.getElementById('chartsLoading');
     const list = document.getElementById('chartsList');
     const error = document.getElementById('chartsError');
     const actions = document.getElementById('chartsActions');
-    loading.classList.remove('hidden'); list.innerHTML = ''; error.classList.add('hidden'); actions.classList.add('hidden');
+    
+    loading.classList.remove('hidden'); 
+    list.innerHTML = ''; 
+    error.classList.add('hidden');
+    actions.classList.add('hidden');
+    
     try {
-        const url = countryId === '0' ? 'https://api.deezer.com/chart/0/tracks?limit=50' : `https://api.deezer.com/chart/${countryId}/tracks?limit=50`;
-        const response = await fetch(url);
+        const deezerUrl = countryId === '0' 
+            ? 'https://api.deezer.com/chart/0/tracks?limit=50' 
+            : `https://api.deezer.com/chart/${countryId}/tracks?limit=50`;
+        
+        // Usa proxy CORS per bypassare il blocco del browser
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(deezerUrl)}`;
+        
+        let response;
+        let useProxy = true;
+        
+        try {
+            response = await fetch(proxyUrl);
+            if (!response.ok) {
+                // Se il proxy fallisce, prova direttamente
+                response = await fetch(deezerUrl);
+                useProxy = false;
+            }
+        } catch (proxyError) {
+            // Fallback: prova direttamente senza proxy
+            response = await fetch(deezerUrl);
+            useProxy = false;
+        }
+        
         if (!response.ok) throw new Error(`Errore HTTP: ${response.status}`);
+        
         const data = await response.json();
-        if (!data.data || data.data.length === 0) throw new Error('Nessuna traccia');
+        
+        if (!data.data || data.data.length === 0) {
+            throw new Error('Nessuna traccia trovata per questo paese.');
+        }
+        
         currentCharts = data.data.map((track, idx) => ({
-            rank: idx + 1, title: track.title, artist: track.artist.name, cover: track.album.cover_medium,
+            rank: idx + 1, 
+            title: track.title, 
+            artist: track.artist.name, 
+            cover: track.album.cover_medium,
             tidalQuery: `${track.artist.name} ${track.title}`.replace(/[^a-zA-Z0-9\s]/g, '')
         }));
-        list.innerHTML = currentCharts.map(t => `<div class="chart-track"><span class="chart-rank">#${t.rank}</span><img src="${t.cover}" class="chart-cover"><div class="chart-info"><div class="chart-title">${t.title}</div><div class="chart-artist">${t.artist}</div></div></div>`).join('');
+        
+        list.innerHTML = currentCharts.map(t => `
+            <div class="chart-track">
+                <span class="chart-rank">#${t.rank}</span>
+                <img src="${t.cover}" class="chart-cover" onerror="this.style.display='none'">
+                <div class="chart-info">
+                    <div class="chart-title">${t.title}</div>
+                    <div class="chart-artist">${t.artist}</div>
+                </div>
+            </div>
+        `).join('');
+        
         actions.classList.remove('hidden');
     } catch (err) {
         error.classList.remove('hidden');
-        error.innerHTML = `<p>❌ Errore: ${err.message}</p><p class="text-xs text-slate-500 mt-2">Prova un altro paese o controlla internet.</p>`;
-    } finally { loading.classList.add('hidden'); }
+        error.innerHTML = `
+            <div class="text-center py-8">
+                <i data-lucide="alert-circle" class="w-10 h-10 mx-auto mb-2 text-red-400"></i>
+                <p class="font-semibold text-red-400">Impossibile caricare le classifiche</p>
+                <p class="text-sm text-slate-400 mt-2">Motivo: ${err.message}</p>
+                <p class="text-xs text-slate-500 mt-2">Prova con un altro paese o controlla la connessione internet.</p>
+            </div>
+        `;
+        lucide.createIcons();
+    } finally { 
+        loading.classList.add('hidden'); 
+    }
 });
 
 document.getElementById('exportM3U8Btn').addEventListener('click', () => {

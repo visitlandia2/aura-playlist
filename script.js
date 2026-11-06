@@ -4,6 +4,7 @@ let userLibrary = [];
 let playlistStructure = {};
 let selectedTracks = new Set();
 let currentCharts = [];
+let lastMatchedTracks = { found: [], uncertain: [], missing: [] };
 
 // ==================== CAMELOT & UTILITY ====================
 const CAMELOT_MAP = {
@@ -254,15 +255,7 @@ async function loadSavedLibrary() {
     } catch (err) { console.error(err); }
 }
 
-// ==================== TRACK MATCHER (STILE LEXICON DJ - MIGLIORATO) ====================
-const matcherDropZone = document.getElementById('matcherDropZone');
-const matcherFileInput = document.getElementById('matcherFileInput');
-['dragenter', 'dragover'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.add('drag-active'); }); });
-['dragleave', 'drop'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.remove('drag-active'); }); });
-matcherDropZone.addEventListener('drop', (e) => { const files = e.dataTransfer.files; if (files.length) handleMatcherFile(files[0]); });
-matcherFileInput.addEventListener('change', (e) => { if (e.target.files.length) handleMatcherFile(e.target.files[0]); });
-
-// Parole "rumore" da rimuovere
+// ==================== TRACK MATCHER ====================
 const NOISE_WORDS = [
     'remaster', 'remastered', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2009', '2010', '2011', '2012',
     'official video', 'official audio', 'lyric video', 'audio', 'video',
@@ -276,55 +269,42 @@ const NOISE_WORDS = [
 function normalizeText(text, strictMode = false) {
     if (!text) return '';
     let normalized = text.toString().toLowerCase();
-    
-    // Rimuovi caratteri speciali
     normalized = normalized.replace(/[~"'`´^]/g, ' ');
     normalized = normalized.replace(/\s*-\s*/g, ' ');
     normalized = normalized.replace(/\s*\(\s*/g, ' ');
     normalized = normalized.replace(/\s*\)\s*/g, ' ');
     normalized = normalized.replace(/\s*\[\s*/g, ' ');
     normalized = normalized.replace(/\s*\]\s*/g, ' ');
-    
-    // Rimuovi feat, ft, featuring
     normalized = normalized.replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi, ' ');
-    
     if (!strictMode) {
-        // Rimuovi parole rumore
         for (let word of NOISE_WORDS) {
             const regex = new RegExp('\\b' + word + '\\b', 'gi');
             normalized = normalized.replace(regex, ' ');
         }
     }
-    
     normalized = normalized.replace(/[^\w\s]/g, ' ');
     normalized = normalized.replace(/\s+/g, ' ').trim();
-    
     return normalized;
 }
 
 function stringSimilarity(str1, str2) {
     const s1 = str1;
     const s2 = str2;
-    
     if (s1 === s2) return 100;
     if (s1.length === 0 || s2.length === 0) return 0;
-    
     if (s1.includes(s2) || s2.includes(s1)) {
         const shorter = Math.min(s1.length, s2.length);
         const longer = Math.max(s1.length, s2.length);
         return (shorter / longer) * 100;
     }
-    
     const words1 = s1.split(' ').filter(w => w.length > 1);
     const words2 = s2.split(' ').filter(w => w.length > 1);
     let commonWords = 0;
-    
     for (let w1 of words1) {
         for (let w2 of words2) {
             if (w1 === w2) { commonWords++; break; }
         }
     }
-    
     const maxWords = Math.max(words1.length, words2.length);
     if (maxWords === 0) return 0;
     return (commonWords / maxWords) * 100;
@@ -333,94 +313,65 @@ function stringSimilarity(str1, str2) {
 function calculateMatchScore(spotifyTrack, libTrack) {
     const spotifyArtist = normalizeText(spotifyTrack.artist, true);
     const libArtist = normalizeText(libTrack.artist, true);
-    
     const spotifyTitle = normalizeText(spotifyTrack.title, false);
     const libTitle = normalizeText(libTrack.title, false);
-    
     const artistSimilarity = stringSimilarity(spotifyArtist, libArtist);
     const titleSimilarity = stringSimilarity(spotifyTitle, libTitle);
-    
     let artistWeight, titleWeight;
-    
     if (artistSimilarity >= 90) {
-        artistWeight = 0.80;
-        titleWeight = 0.20;
+        artistWeight = 0.80; titleWeight = 0.20;
     } else if (artistSimilarity >= 70) {
-        artistWeight = 0.60;
-        titleWeight = 0.40;
+        artistWeight = 0.60; titleWeight = 0.40;
     } else {
-        artistWeight = 0.50;
-        titleWeight = 0.50;
+        artistWeight = 0.50; titleWeight = 0.50;
     }
-    
     const totalScore = (artistSimilarity * artistWeight) + (titleSimilarity * titleWeight);
-    
-    return {
-        total: totalScore,
-        artist: artistSimilarity,
-        title: titleSimilarity
-    };
+    return { total: totalScore, artist: artistSimilarity, title: titleSimilarity };
 }
 
-// Parser intelligente stile Lexicon DJ
 function parseSpotifyExport(content, filename) {
     const tracks = [];
-    
     if (filename.endsWith('.csv')) {
-        // CSV: prima colonna = artista, seconda = titolo
         const lines = content.split(/\r?\n/);
         for (let i = 1; i < lines.length; i++) {
             const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
             if (cols.length >= 2 && cols[0] && cols[1]) {
-                tracks.push({ 
-                    artist: cols[0], 
-                    title: cols[1], 
-                    original: `${cols[0]} - ${cols[1]}` 
-                });
+                tracks.push({ artist: cols[0], title: cols[1], original: `${cols[0]} - ${cols[1]}` });
             }
         }
     } else {
-        // TXT/M3U8: formato misto - rilevamento automatico
         const lines = content.split(/\r?\n/);
         for (let line of lines) {
             line = line.trim();
             if (!line || line.startsWith('#')) continue;
-            
-            // Dividi per " - "
             const parts = line.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
-            
             if (parts.length < 2) continue;
-            
             let artist, title;
-            
             if (parts.length === 2) {
-                // 2 parti: l'artista è quello più corto (di solito)
                 const [first, last] = parts;
                 if (first.split(' ').length <= last.split(' ').length) {
-                    artist = first;
-                    title = last;
+                    artist = first; title = last;
                 } else {
-                    title = first;
-                    artist = last;
+                    title = first; artist = last;
                 }
             } else {
-                // 3+ parti: l'artista è l'ultimo elemento
                 artist = parts[parts.length - 1];
                 title = parts.slice(0, -1).join(' - ');
             }
-            
             if (artist && title && artist.length > 0 && title.length > 0) {
-                tracks.push({ 
-                    artist: artist, 
-                    title: title, 
-                    original: line 
-                });
+                tracks.push({ artist: artist, title: title, original: line });
             }
         }
     }
-    
     return tracks;
 }
+
+const matcherDropZone = document.getElementById('matcherDropZone');
+const matcherFileInput = document.getElementById('matcherFileInput');
+['dragenter', 'dragover'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.add('drag-active'); }); });
+['dragleave', 'drop'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.remove('drag-active'); }); });
+matcherDropZone.addEventListener('drop', (e) => { const files = e.dataTransfer.files; if (files.length) handleMatcherFile(files[0]); });
+matcherFileInput.addEventListener('change', (e) => { if (e.target.files.length) handleMatcherFile(e.target.files[0]); });
 
 function handleMatcherFile(file) {
     document.getElementById('matcherDropText').innerText = `Analisi di ${file.name}...`;
@@ -428,21 +379,108 @@ function handleMatcherFile(file) {
     reader.onload = function(e) {
         const content = e.target.result;
         const spotifyPlaylist = parseSpotifyExport(content, file.name);
-        
         if (spotifyPlaylist.length === 0) { 
             alert('Nessuna traccia trovata. Controlla il formato del file.'); 
             document.getElementById('matcherDropText').innerText = 'Trascina qui il file'; 
             return; 
         }
-        
         performMatching(spotifyPlaylist);
     };
     reader.readAsText(file);
 }
 
+// ==================== FETCH DA SPOTIFY (CON PROXY CORS) ====================
+document.getElementById('fetchSpotifyBtn').addEventListener('click', async () => {
+    const link = document.getElementById('spotifyLinkInput').value.trim();
+    const loading = document.getElementById('spotifyLoading');
+    const errorDiv = document.getElementById('spotifyError');
+    
+    if (!link) {
+        alert('Incolla prima il link della playlist Spotify!');
+        return;
+    }
+    
+    const match = link.match(/playlist\/([a-zA-Z0-9]+)/);
+    if (!match) {
+        alert('Link non valido. Deve essere tipo: https://open.spotify.com/playlist/XXXXX');
+        return;
+    }
+    const playlistId = match[1];
+    
+    loading.classList.remove('hidden');
+    errorDiv.classList.add('hidden');
+    
+    try {
+        const corsProxy = 'https://corsproxy.io/?';
+        const spotifyTokenUrl = 'https://accounts.spotify.com/api/token';
+        const spotifyApiUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&market=IT`;
+        
+        // ⚠️ SOSTITUISCI IL TUO CLIENT SECRET QUI SOTTO
+        const clientId = '1308767b4c5946dab3c421a3b58bc8b4';
+        const clientSecret = '5c0fd128f6e4475f97455bc22b0743d0';
+        
+        const tokenResponse = await fetch(corsProxy + encodeURIComponent(spotifyTokenUrl), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': 'Basic ' + btoa(clientId + ':' + clientSecret)
+            },
+            body: 'grant_type=client_credentials'
+        });
+        
+        if (!tokenResponse.ok) {
+            throw new Error('Errore ottenendo token Spotify');
+        }
+        
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+        
+        const tracksResponse = await fetch(corsProxy + encodeURIComponent(spotifyApiUrl), {
+            headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        
+        if (!tracksResponse.ok) {
+            const errData = await tracksResponse.json();
+            if (errData.error?.message?.includes('not found')) {
+                throw new Error('Playlist non trovata. Assicurati che sia PUBBLICA.');
+            }
+            throw new Error('Errore API: ' + errData.error?.message);
+        }
+        
+        const tracksData = await tracksResponse.json();
+        
+        const tracks = tracksData.items.map(item => {
+            const track = item.track;
+            if (!track) return null;
+            return {
+                artist: track.artists.map(a => a.name).join(', '),
+                title: track.name,
+                original: `${track.artists.map(a => a.name).join(', ')} - ${track.name}`
+            };
+        }).filter(t => t !== null);
+        
+        if (tracks.length === 0) {
+            throw new Error('Nessuna traccia trovata');
+        }
+        
+        const n = document.createElement('div');
+        n.className = 'fixed top-20 right-4 bg-green-500/20 border border-green-500 text-green-300 px-4 py-3 rounded-lg shadow-lg z-50';
+        n.innerHTML = `<div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>Caricate ${tracks.length} tracce da Spotify</span></div>`;
+        document.body.appendChild(n); lucide.createIcons(); setTimeout(() => n.remove(), 3000);
+        
+        performMatching(tracks);
+        
+    } catch (err) {
+        errorDiv.classList.remove('hidden');
+        errorDiv.innerHTML = `<p class="font-semibold">❌ ${err.message}</p><p class="text-xs mt-1">Assicurati che la playlist sia PUBBLICA su Spotify.</p>`;
+    } finally {
+        loading.classList.add('hidden');
+    }
+});
+
 function performMatching(spotifyPlaylist) {
     if (userLibrary.length === 0) { 
-        alert('⚠️ Prima carica la libreria!'); 
+        alert('⚠️ Prima carica la tua libreria Engine DJ nella sezione 1!'); 
         return; 
     }
     
@@ -460,7 +498,6 @@ function performMatching(spotifyPlaylist) {
             }
         }
         
-        // Logica di matching
         if (bestScore.artist >= 85) {
             matchedTracks.found.push({ ...sp, match: bestMatch, score: bestScore });
         } else if (bestScore.artist >= 70 && bestScore.total >= 50) {
@@ -470,6 +507,7 @@ function performMatching(spotifyPlaylist) {
         }
     }
     
+    lastMatchedTracks = matchedTracks;
     renderMatcherResults(matchedTracks, spotifyPlaylist.length);
 }
 
@@ -523,10 +561,9 @@ document.getElementById('showMissingBtn').addEventListener('click', () => {
 });
 
 document.getElementById('exportMissingBtn').addEventListener('click', () => {
-    const missing = matchedTracks.missing || [];
-    if (missing.length === 0) { alert('Nessuna traccia mancante.'); return; }
+    if (lastMatchedTracks.missing.length === 0) { alert('Nessuna traccia mancante.'); return; }
     let m3u8 = '#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n';
-    missing.forEach(t => {
+    lastMatchedTracks.missing.forEach(t => {
         m3u8 += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n# TIDAL: https://tidal.com/search?q=${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`;
     });
     downloadM3U8(m3u8, 'AURA_Mancanti');
@@ -556,53 +593,32 @@ document.getElementById('loadChartsBtn').addEventListener('click', async () => {
     try {
         const url = `https://itunes.apple.com/${countryId}/rss/topsongs/limit=50/json`;
         const response = await fetch(url);
-        
         if (!response.ok) throw new Error(`Errore: ${response.status}`);
-        
         const data = await response.json();
         const entries = data.feed?.entry || [];
-        
         if (entries.length === 0) throw new Error('Nessuna traccia trovata');
-        
         currentCharts = entries.map((entry, idx) => {
             const artist = entry['im:artist']?.label || entry['im:artist'] || 'Unknown';
             const title = entry.title?.label || entry.title || 'Unknown';
             const cover = entry['im:image']?.[2]?.label || entry['im:image']?.[1]?.label || entry['im:image']?.[0]?.label || '';
             return {
-                rank: idx + 1,
-                title: title,
-                artist: artist,
-                cover: cover,
+                rank: idx + 1, title: title, artist: artist, cover: cover,
                 tidalQuery: `${artist} ${title}`.replace(/[^a-zA-Z0-9\s]/g, '')
             };
         });
-        
         list.innerHTML = currentCharts.map(t => `
             <div class="chart-track">
                 <span class="chart-rank">#${t.rank}</span>
                 <img src="${t.cover}" class="chart-cover" onerror="this.style.display='none'">
-                <div class="chart-info">
-                    <div class="chart-title">${t.title}</div>
-                    <div class="chart-artist">${t.artist}</div>
-                </div>
+                <div class="chart-info"><div class="chart-title">${t.title}</div><div class="chart-artist">${t.artist}</div></div>
             </div>
         `).join('');
-        
         actions.classList.remove('hidden');
     } catch (err) {
         error.classList.remove('hidden');
-        error.innerHTML = `
-            <div class="text-center py-8">
-                <i data-lucide="alert-circle" class="w-10 h-10 mx-auto mb-2 text-red-400"></i>
-                <p class="font-semibold text-red-400">Impossibile caricare le classifiche</p>
-                <p class="text-sm text-slate-400 mt-2">Motivo: ${err.message}</p>
-                <p class="text-xs text-slate-500 mt-2">Prova con un altro paese.</p>
-            </div>
-        `;
+        error.innerHTML = `<div class="text-center py-8"><i data-lucide="alert-circle" class="w-10 h-10 mx-auto mb-2 text-red-400"></i><p class="font-semibold text-red-400">Impossibile caricare</p><p class="text-sm text-slate-400 mt-2">${err.message}</p></div>`;
         lucide.createIcons();
-    } finally { 
-        loading.classList.add('hidden'); 
-    }
+    } finally { loading.classList.add('hidden'); }
 });
 
 document.getElementById('exportM3U8Btn').addEventListener('click', () => {

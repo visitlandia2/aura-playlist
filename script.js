@@ -11,8 +11,11 @@ let currentCharts = [];
 const CLIENT_ID = '1308767b4c5946dab3c421a3b58bc8b4';
 const CLIENT_SECRET = '5c0fd128f6e4475f97455bc22b0743d0';
 
-// Proxy CORS con fallback (se uno non funziona, prova l'altro)
+// Proxy CORS con fallback (6 proxy diversi in ordine di affidabilità)
 const CORS_PROXIES = [
+    'https://corsproxy.org/?',
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://cors.bridged.cc/',
     'https://corsproxy.io/?',
     'https://api.allorigins.win/raw?url=',
     'https://thingproxy.freeboard.io/fetch/'
@@ -64,17 +67,23 @@ function sim(a,b){if(a===b)return 100;if(!a||!b)return 0;if(a.includes(b)||b.inc
 
 // Funzione per fare fetch con fallback su più proxy
 async function fetchWithProxy(url, options = {}) {
-    for (let proxy of CORS_PROXIES) {
+    let lastError = '';
+    for (let i = 0; i < CORS_PROXIES.length; i++) {
+        const proxy = CORS_PROXIES[i];
         try {
             const fullUrl = proxy + encodeURIComponent(url);
             const response = await fetch(fullUrl, options);
-            if (response.ok) return response;
+            if (response.ok) {
+                console.log('✅ Proxy funzionante:', proxy);
+                return response;
+            }
+            lastError = `Proxy ${i+1} (${proxy}): HTTP ${response.status}`;
         } catch (e) {
-            console.log('Proxy fallito:', proxy);
+            lastError = `Proxy ${i+1} (${proxy}): ${e.message}`;
             continue;
         }
     }
-    throw new Error('Tutti i proxy CORS hanno fallito. Riprova tra qualche minuto.');
+    throw new Error('Tutti i proxy CORS hanno fallito. ' + lastError);
 }
 
 // METODO 1: Carica da Spotify
@@ -102,7 +111,15 @@ document.getElementById('fetchSpotifyBtn').onclick=async()=>{
         if(!tracks.length)throw new Error('Nessuna traccia trovata');
         lastMatched.spotifyTracks=tracks;
         doMatch(tracks);
-    }catch(e){er.classList.remove('hidden');er.innerText='❌ '+e.message;}finally{ld.classList.add('hidden');}
+    }catch(e){
+        er.classList.remove('hidden');
+        er.innerHTML = `❌ ${e.message}<br><br>
+            <div class="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs">
+                <strong>💡 Soluzione alternativa:</strong><br>
+                1. Usa <a href="https://www.tunemymusic.com/it/" target="_blank" class="underline">TuneMyMusic</a> per esportare la playlist Spotify in formato CSV<br>
+                2. Carica il file CSV nel <strong>Metodo 2</strong> qui sotto
+            </div>`;
+    }finally{ld.classList.add('hidden');}
 };
 
 // METODO 2: Carica da file

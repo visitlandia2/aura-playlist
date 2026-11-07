@@ -65,7 +65,6 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5 text-aura-gold"></i> 3. Track Matcher — Confronta Playlist</h2>
                 <p class="text-slate-400 text-sm mb-4">Confronta una playlist Spotify o un file esportato con la tua libreria</p>
                 
-                <!-- METODO 1: LINK SPOTIFY -->
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-4">
                     <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY</label>
                     <div class="flex gap-2">
@@ -83,7 +82,6 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                     <div class="flex-1 h-px bg-slate-700"></div>
                 </div>
 
-                <!-- METODO 2: FILE -->
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
                     <label class="text-xs text-aura-gold font-bold mb-2 block">📁 METODO 2: CARICA FILE</label>
                     <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-6 text-center hover:border-aura-gold/50 cursor-pointer relative">
@@ -94,7 +92,6 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                     </div>
                 </div>
 
-                <!-- RISULTATI -->
                 <div id="matcherResults" class="hidden mt-6">
                     <div class="grid grid-cols-3 gap-3 mb-4">
                         <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-center"><div class="text-2xl font-bold text-aura-cyan" id="mTotal">0</div><div class="text-xs text-slate-400">Totali</div></div>
@@ -114,6 +111,7 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                         <button id="exportMissingSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i> Cerca Mancanti su Spotify</button>
                         <button id="exportPresentM3U8Btn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Esporta Presenti .m3u8</button>
                         <button id="exportMissingM3U8Btn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Esporta Mancanti .m3u8</button>
+                        <button id="createSpotifyPlaylistBtn" class="bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="music" class="w-4 h-4"></i> Crea Playlist Spotify</button>
                     </div>
                 </div>
             </section>
@@ -127,10 +125,4 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                     <button id="loadChartsBtn" class="bg-aura-cyan text-slate-900 font-bold px-6 py-2 rounded-lg">Carica</button>
                 </div>
                 <div id="chartsList" class="space-y-2 max-h-64 overflow-y-auto"></div>
-                <div id="chartsActions" class="hidden mt-4"><button id="exportChartsBtn" class="bg-aura-cyan text-slate-900 font-bold px-4 py-2 rounded-lg text-sm">Esporta .m3u8</button></div>
-            </section>
-        </main>
-    </div>
-    <script src="script.js"></script>
-</body>
-</html>
+                <div id="chartsActions" class="hidden mt-4"><button id="exportChartsBtn" class="bg-aura-cyan text-slate-900 font-bold px-4 py-2 rounded-lg text-sm">Esporta .m

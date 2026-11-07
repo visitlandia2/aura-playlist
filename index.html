@@ -63,7 +63,8 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-4">
                     <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY</label>
                     <button type="button" id="authSpotifyBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-lg mb-3">🔗 Autorizza Spotify (fallo una volta sola)</button>
-                    <div class="flex gap-2">
+                    <div id="tokenStatus" class="mt-2 p-2 bg-slate-800 rounded text-xs text-slate-400">Token: caricamento...</div>
+                    <div class="flex gap-2 mt-3">
                         <input type="text" id="spotifyLink" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-aura-gold outline-none">
                         <button type="button" id="fetchSpotifyBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i> Carica</button>
                     </div>

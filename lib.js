@@ -1,73 +1,81 @@
-const SUPABASE_URL = 'https://kmensxyzihpohcdthkwb.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_uUKZs-wsbevEXnD5aQ--Ug_K0bmHLDO';
-
+// AURA - Local Storage (no Supabase needed)
 const supabase = {
-    url: SUPABASE_URL,
-    key: SUPABASE_ANON_KEY,
-    async request(endpoint, options = {}) {
-        const res = await fetch(`${this.url}${endpoint}`, {
-            ...options,
-            headers: {
-                'apikey': this.key,
-                'Authorization': `Bearer ${this.getSession() || this.key}`,
-                'Content-Type': 'application/json',
-                ...(options.headers || {})
-            }
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: 'Errore di rete' }));
-            throw err;
-        }
-        return res.json();
-    },
-    getSession() { return localStorage.getItem('sb_session'); },
-    setSession(session) {
-        if (session) localStorage.setItem('sb_session', session);
-        else localStorage.removeItem('sb_session');
-    },
-    getUser() {
-        const data = localStorage.getItem('sb_user');
-        return data ? JSON.parse(data) : null;
-    },
-    setUser(user) {
-        if (user) localStorage.setItem('sb_user', JSON.stringify(user));
-        else localStorage.removeItem('sb_user');
-    },
-    async signUp(email, password) {
-        const data = await this.request('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email, password }) });
-        if (data.access_token) { this.setSession(data.access_token); this.setUser(data.user); }
-        return data;
-    },
-    async signIn(email, password) {
-        const data = await this.request('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email, password }) });
-        if (data.access_token) { this.setSession(data.access_token); this.setUser(data.user); }
-        return data;
-    },
-    signOut() { this.setSession(null); this.setUser(null); },
-    async resetPassword(email) {
-        return this.request('/auth/v1/recover', { method: 'POST', body: JSON.stringify({ email }) });
-    },
-    isLoggedIn() { return !!this.getSession() && !!this.getUser(); },
-    async saveLibrary(tracks, libraryName = 'Libreria Engine DJ') {
-        const user = this.getUser();
-        if (!user) throw new Error('Devi essere loggato');
-        const existing = await this.request(`/rest/v1/user_libraries?user_id=eq.${user.id}&select=id`, { method: 'GET' });
-        if (existing.length > 0) {
-            await this.request(`/rest/v1/user_libraries?id=eq.${existing[0].id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ tracks: tracks, library_name: libraryName, updated_at: new Date().toISOString() })
-            });
-        } else {
-            await this.request('/rest/v1/user_libraries', {
-                method: 'POST',
-                body: JSON.stringify({ user_id: user.id, tracks: tracks, library_name: libraryName })
-            });
-        }
-    },
-    async loadLibrary() {
-        const user = this.getUser();
-        if (!user) return null;
-        const data = await this.request(`/rest/v1/user_libraries?user_id=eq.${user.id}&select=*`, { method: 'GET' });
-        return data.length > 0 ? data[0] : null;
-    }
+  session: null,
+  users: {},
+  
+  async signUp(email, password) {
+    if (this.users[email]) throw new Error('Utente già esistente');
+    if (password.length < 6) throw new Error('Password minimo 6 caratteri');
+    const token = btoa(email + ':' + password + ':' + Date.now());
+    this.users[email] = { email, password: btoa(password), token, libraries: {} };
+    localStorage.setItem('aura_users', JSON.stringify(this.users));
+    this.session = token;
+    localStorage.setItem('aura_session', token);
+    return { user: { email } };
+  },
+  
+  async signIn(email, password) {
+    this._loadUsers();
+    const user = this.users[email];
+    if (!user) throw new Error('Utente non trovato. Registrati prima.');
+    if (btoa(password) !== user.password) throw new Error('Password errata');
+    this.session = user.token;
+    localStorage.setItem('aura_session', this.session);
+    return { user: { email } };
+  },
+  
+  signOut() {
+    this.session = null;
+    localStorage.removeItem('aura_session');
+  },
+  
+  getSession() {
+    return this.session || localStorage.getItem('aura_session');
+  },
+  
+  getUser() {
+    const session = this.getSession();
+    if (!session) return null;
+    try {
+      const parts = atob(session).split(':');
+      return { email: parts[0], id: parts[0] };
+    } catch { return null; }
+  },
+  
+  isLoggedIn() {
+    return !!this.getSession();
+  },
+  
+  async resetPassword(email) {
+    this._loadUsers();
+    if (!this.users[email]) throw new Error('Email non registrata');
+    return { message: 'Contatta l\'amministratore per resettare la password' };
+  },
+  
+  async saveLibrary(tracks, name) {
+    this._loadUsers();
+    const user = this.getUser();
+    if (!user) throw new Error('Non autenticato');
+    if (!this.users[user.email].libraries) this.users[user.email].libraries = {};
+    this.users[user.email].libraries[name] = tracks;
+    localStorage.setItem('aura_users', JSON.stringify(this.users));
+    return { success: true };
+  },
+  
+  async loadLibrary() {
+    this._loadUsers();
+    const user = this.getUser();
+    if (!user) return null;
+    const libs = this.users[user.email]?.libraries;
+    if (!libs) return null;
+    const names = Object.keys(libs);
+    if (names.length === 0) return null;
+    const lastLib = libs[names[names.length - 1]];
+    return { tracks: lastLib, name: names[names.length - 1] };
+  },
+  
+  _loadUsers() {
+    const data = localStorage.getItem('aura_users');
+    if (data) this.users = JSON.parse(data);
+  }
 };

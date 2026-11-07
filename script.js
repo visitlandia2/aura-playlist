@@ -6,11 +6,14 @@
     let lastMatched = { found: [], missing: [], spotifyTracks: [] };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
-    // Controlla se c'è un token nell'URL (ritorno da autorizzazione Spotify)
+    // Controlla se ci sono token nell'URL (ritorno da autorizzazione Spotify)
     const urlParams = new URLSearchParams(window.location.search);
-    const spotifyToken = urlParams.get('spotify_token');
-    if (spotifyToken) {
-      localStorage.setItem('spotify_token', spotifyToken);
+    const accessToken = urlParams.get('spotify_access');
+    const refreshToken = urlParams.get('spotify_refresh');
+    
+    if (accessToken && refreshToken) {
+      localStorage.setItem('spotify_access_token', accessToken);
+      localStorage.setItem('spotify_refresh_token', refreshToken);
       window.history.replaceState({}, document.title, window.location.pathname);
       alert('✅ Autorizzazione Spotify completata! Ora puoi caricare playlist.');
     }
@@ -138,7 +141,34 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // Autorizza Spotify - redirect diretto (non popup)
+    // Ottieni o refresha il token
+    async function getValidToken() {
+      let accessToken = localStorage.getItem('spotify_access_token');
+      let refreshToken = localStorage.getItem('spotify_refresh_token');
+      
+      if (!accessToken || !refreshToken) return null;
+      
+      // Prova a usare il token corrente
+      const testRes = await fetch(WORKER_URL + '/playlist?id=test', {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      
+      if (testRes.status === 401) {
+        // Token scaduto, usa refresh token
+        const refreshRes = await fetch(WORKER_URL + '/refresh?refresh=' + refreshToken);
+        const refreshData = await refreshRes.json();
+        
+        if (refreshData.access_token) {
+          localStorage.setItem('spotify_access_token', refreshData.access_token);
+          return refreshData.access_token;
+        }
+        return null;
+      }
+      
+      return accessToken;
+    }
+
+    // Autorizza Spotify
     document.getElementById('authSpotifyBtn').onclick = function() {
       window.location.href = WORKER_URL + '/auth';
     };
@@ -151,15 +181,18 @@
       if (!m) { alert('Link non valido'); return; }
       const pid = m[1];
       
-      const token = localStorage.getItem('spotify_token');
-      if (!token) {
-        er.classList.remove('hidden');
-        er.innerHTML = '❌ Devi prima autorizzare Spotify. Clicca "🔗 Autorizza Spotify" qui sopra.';
-        return;
-      }
-      
       ld.classList.remove('hidden'); er.classList.add('hidden');
+      
       try {
+        const token = await getValidToken();
+        
+        if (!token) {
+          er.classList.remove('hidden');
+          er.innerHTML = '❌ Devi prima autorizzare Spotify. Clicca "🔗 Autorizza Spotify" qui sopra.';
+          ld.classList.add('hidden');
+          return;
+        }
+        
         const response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
           headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -246,50 +279,4 @@
 
     function renderFound() {
       const l = document.getElementById('foundList'); if (!l) return;
-      if (!lastMatched.found.length) { l.innerHTML = '<p class="text-center text-slate-500 py-4">Nessun match</p>'; return; }
-      l.innerHTML = lastMatched.found.map(t => `<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
-
-    function renderMissing() {
-      const l = document.getElementById('missingList'); if (!l) return;
-      if (!lastMatched.missing.length) { l.innerHTML = '<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>'; return; }
-      l.innerHTML = lastMatched.missing.map(t => `<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded text-white">🔍</a></div>`).join('');
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
-
-    document.getElementById('tabFound').onclick = () => { document.getElementById('foundList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden'); document.getElementById('tabFound').classList.add('active'); document.getElementById('tabMissing').classList.remove('active'); };
-    document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
-
-    document.getElementById('exportPresentM3U8Btn').onclick = () => {
-      if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: AURA - Tracce Presenti\n\n';
-      lastMatched.found.forEach(t => { m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; });
-      dl(m, 'AURA_Presenti');
-    };
-
-    document.getElementById('exportMissingM3U8Btn').onclick = () => {
-      if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n\n';
-      lastMatched.missing.forEach(t => { m += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`; });
-      dl(m, 'AURA_Mancanti');
-    };
-
-    document.getElementById('exportMissingSpotifyBtn').onclick = () => {
-      if (!lastMatched.missing.length) return;
-      window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
-    };
-
-    document.getElementById('createSpotifyPlaylistBtn').onclick = () => {
-      if (!lastMatched.missing.length) return;
-      window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
-    };
-
-    function dl(c, f) {
-      const b = new Blob([c], { type: 'audio/x-mpegurl' }), u = URL.createObjectURL(b), a = document.createElement('a');
-      a.href = u; a.download = f + '_' + new Date().toISOString().split('T')[0] + '.m3u8';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
-    }
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-})();
+      if (!lastMatched.found.length) { l.innerHTML = '<

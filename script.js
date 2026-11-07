@@ -129,19 +129,19 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    async function fetchFromWorker(endpoint) {
-      const response = await fetch(WORKER_URL + endpoint);
-      if (!response.ok) throw new Error('HTTP ' + response.status + ' - ' + await response.text());
-      return response;
-    }
-
-    // Pulsante Autorizza Spotify
-    const authSpotifyBtn = document.getElementById('authSpotifyBtn');
-    if (authSpotifyBtn) {
-      authSpotifyBtn.onclick = function() {
-        window.open(WORKER_URL + '/auth', '_blank');
-      };
-    }
+    // Autorizza Spotify
+    document.getElementById('authSpotifyBtn').onclick = function() {
+      const popup = window.open(WORKER_URL + '/auth', 'Spotify Auth', 'width=600,height=700');
+      const checkAuth = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkAuth);
+          const token = localStorage.getItem('spotify_token');
+          if (token) {
+            alert('✅ Autorizzazione completata! Ora puoi caricare playlist.');
+          }
+        }
+      }, 500);
+    };
 
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
@@ -150,20 +150,38 @@
       const m = link.match(/playlist\/([a-zA-Z0-9]+)/);
       if (!m) { alert('Link non valido'); return; }
       const pid = m[1];
+      
+      const token = localStorage.getItem('spotify_token');
+      if (!token) {
+        er.classList.remove('hidden');
+        er.innerHTML = '❌ Devi prima autorizzare Spotify. Clicca "🔗 Autorizza Spotify" qui sopra.';
+        return;
+      }
+      
       ld.classList.remove('hidden'); er.classList.add('hidden');
       try {
-        const res = await fetchFromWorker('/playlist?id=' + pid);
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
+        const response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error('HTTP ' + response.status + ' - ' + errorText);
+        }
+        
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message || 'Errore Spotify');
+        
         const tracks = data.items.map(i => {
           const t = i.track; if (!t) return null;
           return { artist: t.artists.map(a => a.name).join(', '), title: t.name, original: t.artists.map(a => a.name).join(', ') + ' - ' + t.name };
         }).filter(t => t);
+        
         if (!tracks.length) throw new Error('Nessuna traccia');
         lastMatched.spotifyTracks = tracks; doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}<br><div class="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs"><strong>💡 Prima autorizza:</strong> clicca "🔗 Autorizza Spotify" qui sopra, autorizza l'app, poi riprova.</div>`;
+        er.innerHTML = `❌ ${e.message}`;
       } finally { ld.classList.add('hidden'); }
     };
 

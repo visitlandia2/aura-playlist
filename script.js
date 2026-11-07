@@ -10,7 +10,13 @@ let currentCharts = [];
 // ⚠️ SOSTITUISCI CON IL TUO CLIENT SECRET REALE
 const CLIENT_ID = '1308767b4c5946dab3c421a3b58bc8b4';
 const CLIENT_SECRET = '5c0fd128f6e4475f97455bc22b0743d0';
-const CORS_PROXY = 'https://corsproxy.io/?';
+
+// Proxy CORS con fallback (se uno non funziona, prova l'altro)
+const CORS_PROXIES = [
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/raw?url=',
+    'https://thingproxy.freeboard.io/fetch/'
+];
 
 // ==================== CAMELOT ====================
 const CAMELOT_MAP = {'am':'8A','a':'8A','em':'9A','e':'9A','bm':'10A','b':'10A','f#m':'11A','gbm':'11A','c#m':'12A','dbm':'12A','g#m':'1A','abm':'1A','d#m':'2A','ebm':'2A','a#m':'3A','bbm':'3A','c':'8B','g':'9B','d':'10B','a':'11B','e':'12B','b':'1B','f#':'2B','gb':'2B','c#':'3B','db':'3B','g#':'4B','ab':'4B','d#':'5B','eb':'5B','a#':'6B','bb':'6B','f':'7B'};
@@ -56,28 +62,65 @@ const NOISE=['remaster','remastered','2019','2020','2021','2022','2023','2024','
 function norm(t,strict=false){if(!t)return'';let n=t.toString().toLowerCase().replace(/[~"'`´^]/g,' ').replace(/\s*-\s*/g,' ').replace(/\s*[\(\)\[\]]/g,' ').replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi,' ');if(!strict)for(let w of NOISE)n=n.replace(new RegExp('\\b'+w+'\\b','gi'),' ');return n.replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim();}
 function sim(a,b){if(a===b)return 100;if(!a||!b)return 0;if(a.includes(b)||b.includes(a))return(Math.min(a.length,b.length)/Math.max(a.length,b.length))*100;const w1=a.split(' ').filter(w=>w.length>1),w2=b.split(' ').filter(w=>w.length>1);let c=0;for(let x of w1)for(let y of w2)if(x===y){c++;break;}return(c/Math.max(w1.length,w2.length))*100;}
 
+// Funzione per fare fetch con fallback su più proxy
+async function fetchWithProxy(url, options = {}) {
+    for (let proxy of CORS_PROXIES) {
+        try {
+            const fullUrl = proxy + encodeURIComponent(url);
+            const response = await fetch(fullUrl, options);
+            if (response.ok) return response;
+        } catch (e) {
+            console.log('Proxy fallito:', proxy);
+            continue;
+        }
+    }
+    throw new Error('Tutti i proxy CORS hanno fallito. Riprova tra qualche minuto.');
+}
+
+// METODO 1: Carica da Spotify
 document.getElementById('fetchSpotifyBtn').onclick=async()=>{
     const link=document.getElementById('spotifyLink').value.trim();
     const ld=document.getElementById('spotifyLoading'),er=document.getElementById('spotifyError');
     if(!link){alert('Incolla il link Spotify');return;}
-    const m=link.match(/playlist\/([a-zA-Z0-9]+)/);if(!m){alert('Link non valido');return;}
+    const m=link.match(/playlist\/([a-zA-Z0-9]+)/);if(!m){alert('Link non valido. Deve essere tipo: https://open.spotify.com/playlist/XXXXX');return;}
     const pid=m[1];ld.classList.remove('hidden');er.classList.add('hidden');
     try{
-        const tokRes=await fetch(CORS_PROXY+encodeURIComponent('https://accounts.spotify.com/api/token'),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':'Basic '+btoa(CLIENT_ID+':'+CLIENT_SECRET)},body:'grant_type=client_credentials'});
-        if(!tokRes.ok)throw new Error('Errore token Spotify');
+        // Verifica che il Client Secret sia stato inserito
+        if (CLIENT_SECRET === 'INSERISCI_QUI_IL_TUO_CLIENT_SECRET' || CLIENT_SECRET === '') {
+            throw new Error('⚠️ Client Secret non configurato! Contatta l\'amministratore del sito.');
+        }
+        
+        // Ottieni token
+        const tokRes=await fetchWithProxy('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':'Basic '+btoa(CLIENT_ID+':'+CLIENT_SECRET)},body:'grant_type=client_credentials'});
+        if(!tokRes.ok)throw new Error('Errore ottenendo token Spotify. Controlla il Client Secret.');
         const tok=await tokRes.json();
-        const trRes=await fetch(CORS_PROXY+encodeURIComponent(`https://api.spotify.com/v1/playlists/${pid}/tracks?limit=100&market=IT`),{headers:{'Authorization':'Bearer '+tok.access_token}});
-        if(!trRes.ok)throw new Error('Playlist non trovata o privata');
+        // Ottieni tracce
+        const trRes=await fetchWithProxy(`https://api.spotify.com/v1/playlists/${pid}/tracks?limit=100&market=IT`,{headers:{'Authorization':'Bearer '+tok.access_token}});
+        if(!trRes.ok)throw new Error('Playlist non trovata o privata. Deve essere PUBBLICA.');
         const data=await trRes.json();
         const tracks=data.items.map(i=>{const t=i.track;if(!t)return null;return{artist:t.artists.map(a=>a.name).join(', '),title:t.name,original:t.artists.map(a=>a.name).join(', ')+' - '+t.name};}).filter(t=>t);
-        if(!tracks.length)throw new Error('Nessuna traccia');
+        if(!tracks.length)throw new Error('Nessuna traccia trovata');
         lastMatched.spotifyTracks=tracks;
         doMatch(tracks);
     }catch(e){er.classList.remove('hidden');er.innerText='❌ '+e.message;}finally{ld.classList.add('hidden');}
 };
 
+// METODO 2: Carica da file
+const mdz=document.getElementById('matcherDropZone'),mfi=document.getElementById('matcherFileInput');
+['dragenter','dragover'].forEach(ev=>mdz.addEventListener(ev,e=>{e.preventDefault();mdz.classList.add('border-aura-gold');}));
+['dragleave','drop'].forEach(ev=>mdz.addEventListener(ev,e=>{e.preventDefault();mdz.classList.remove('border-aura-gold');}));
+mdz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)handleMatcherFile(e.dataTransfer.files[0]);});
+mfi.onchange=e=>{if(e.target.files.length)handleMatcherFile(e.target.files[0]);};
+
+function handleMatcherFile(file){document.getElementById('matcherDropText').innerText='Analisi...';const r=new FileReader();r.onload=e=>{const tracks=parseFile(e.target.result,file.name);if(!tracks.length){alert('Nessuna traccia trovata nel file');document.getElementById('matcherDropText').innerText='Trascina qui il file';return;}lastMatched.spotifyTracks=tracks;doMatch(tracks);};r.readAsText(file);}
+
+function parseFile(content,filename){const tracks=[];
+if(filename.endsWith('.csv')){const lines=content.split(/\r?\n/);for(let i=1;i<lines.length;i++){const cols=lines[i].split(',').map(c=>c.replace(/^"|"$/g,'').trim());if(cols.length>=2&&cols[0]&&cols[1])tracks.push({artist:cols[0],title:cols[1],original:cols[0]+' - '+cols[1]});}}
+else{const lines=content.split(/\r?\n/);for(let line of lines){line=line.trim();if(!line||line.startsWith('#'))continue;const parts=line.split(' - ').map(p=>p.trim()).filter(p=>p.length>0);if(parts.length<2)continue;let artist,title;if(parts.length===2){if(parts[0].split(' ').length<=parts[1].split(' ').length){artist=parts[0];title=parts[1];}else{title=parts[0];artist=parts[1];}}else{artist=parts[parts.length-1];title=parts.slice(0,-1).join(' - ');}if(artist&&title)tracks.push({artist,title,original:line});}}
+return tracks;}
+
 function doMatch(spTracks){
-    if(!userLibrary.length){alert('⚠️ Carica prima la libreria!');return;}
+    if(!userLibrary.length){alert('⚠️ Carica prima la libreria nella Sezione 1!');return;}
     const found=[],missing=[];
     for(let sp of spTracks){let best=null,bs={t:0,a:0};for(let lib of userLibrary){const as=sim(norm(sp.artist,true),norm(lib.artist,true)),ts=sim(norm(sp.title,false),norm(lib.title,false)),tot=as>=90?as*0.8+ts*0.2:as*0.6+ts*0.4;if(tot>bs.t){bs={t:tot,a:as};best=lib;}}
     if(bs.a>=85)found.push({...sp,match:best,score:bs});else missing.push(sp);}
@@ -90,7 +133,7 @@ function doMatch(spTracks){
 }
 
 function renderFound(){const l=document.getElementById('foundList');if(!lastMatched.found.length){l.innerHTML='<p class="text-center text-slate-500 py-4">Nessun match</p>';return;}l.innerHTML=lastMatched.found.map(t=>`<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');lucide.createIcons();}
-function renderMissing(){const l=document.getElementById('missingList');if(!lastMatched.missing.length){l.innerHTML='<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>';return;}l.innerHTML=lastMatched.missing.map(t=>`<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded">Spotify</a></div>`).join('');lucide.createIcons();}
+function renderMissing(){const l=document.getElementById('missingList');if(!lastMatched.missing.length){l.innerHTML='<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>';return;}l.innerHTML=lastMatched.missing.map(t=>`<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded text-white">🔍</a></div>`).join('');lucide.createIcons();}
 
 document.getElementById('tabFound').onclick=()=>{document.getElementById('foundList').classList.remove('hidden');document.getElementById('missingList').classList.add('hidden');document.getElementById('tabFound').classList.add('active');document.getElementById('tabMissing').classList.remove('active');};
 document.getElementById('tabMissing').onclick=()=>{document.getElementById('foundList').classList.add('hidden');document.getElementById('missingList').classList.remove('hidden');document.getElementById('tabMissing').classList.add('active');document.getElementById('tabFound').classList.remove('active');};
@@ -98,9 +141,7 @@ document.getElementById('tabMissing').onclick=()=>{document.getElementById('foun
 document.getElementById('exportMissingSpotifyBtn').onclick=()=>{
     if(!lastMatched.missing.length){alert('Nessuna traccia mancante');return;}
     const q=lastMatched.missing.map(t=>encodeURIComponent(t.original)).join(',');
-    const url=`https://open.spotify.com/search/${q}`;
-    window.open(url,'_blank');
-    alert('🎵 Spotify aperto con le tracce mancanti!');
+    window.open(`https://open.spotify.com/search/${q}`,'_blank');
 };
 
 document.getElementById('exportPresentM3U8Btn').onclick=()=>{

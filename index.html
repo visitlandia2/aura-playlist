@@ -19,13 +19,13 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
             <h1 class="text-3xl font-bold text-center mb-2">AURA</h1>
             <p class="text-slate-400 text-center mb-6">Engine DJ Edition</p>
             <div id="authMessage" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
-            <form id="loginForm" class="space-y-4">
+            <form id="loginForm" class="space-y-4" onsubmit="return false;">
                 <input type="email" id="email" placeholder="Email" class="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 px-4 text-white focus:border-aura-gold outline-none" required>
                 <input type="password" id="password" placeholder="Password" minlength="6" class="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 px-4 text-white focus:border-aura-gold outline-none" required>
                 <div class="text-right"><button type="button" id="forgotBtn" class="text-xs text-slate-400 hover:text-aura-gold">Password dimenticata?</button></div>
-                <button type="submit" id="authBtn" class="w-full bg-aura-gold text-slate-900 font-bold py-3 rounded-lg hover:bg-yellow-500">Accedi</button>
+                <button type="button" id="authBtn" class="w-full bg-aura-gold text-slate-900 font-bold py-3 rounded-lg hover:bg-yellow-500">Accedi</button>
             </form>
-            <p class="text-center text-slate-400 mt-6 text-sm"><span id="switchText">Non hai un account?</span> <button id="switchBtn" class="text-aura-gold font-semibold">Registrati</button></p>
+            <p class="text-center text-slate-400 mt-6 text-sm"><span id="switchText">Non hai un account?</span> <button type="button" id="switchBtn" class="text-aura-gold font-semibold">Registrati</button></p>
         </div>
     </div>
 
@@ -36,9 +36,7 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <div class="flex items-center gap-4"><span id="userEmail" class="text-sm text-slate-400"></span><button onclick="logout()" class="text-sm text-slate-400 hover:text-white">Esci</button></div>
             </div>
         </header>
-
         <main class="max-w-7xl mx-auto px-6 py-8 flex-1 space-y-6">
-            
             <section class="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
                 <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="upload" class="w-5 h-5 text-aura-cyan"></i> 1. Importa Libreria Engine DJ</h2>
                 <p class="text-slate-400 text-sm mb-4">Esporta da Engine DJ in formato <span class="text-aura-gold font-mono">.m3u8</span> o Rekordbox in <span class="text-slate-300 font-mono">.xml</span></p>
@@ -49,7 +47,6 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 </div>
                 <div id="resultArea" class="hidden mt-4 bg-green-500/10 border border-green-500/30 rounded-lg p-3"><p class="text-green-300 text-sm" id="resultText"></p></div>
             </section>
-
             <section class="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
                 <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="folder-tree" class="w-5 h-5 text-aura-gold"></i> 2. Le Tue Playlist</h2>
                 <div class="flex gap-2 mb-4 flex-wrap">
@@ -60,11 +57,9 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <div id="playlistTree" class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 max-h-96 overflow-y-auto"><p class="text-center text-slate-500 py-8">Carica la libreria per vedere le playlist</p></div>
                 <div class="mt-3 p-3 bg-aura-gold/10 border border-aura-gold/30 rounded-lg"><p class="text-aura-gold text-sm">Tracce selezionate: <span id="selectedCount">0</span></p></div>
             </section>
-
             <section class="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
-                <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5 text-aura-gold"></i> 3. Track Matcher — Confronta Playlist</h2>
+                <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5 text-aura-gold"></i> 3. Track Matcher</h2>
                 <p class="text-slate-400 text-sm mb-4">Confronta una playlist Spotify o un file esportato con la tua libreria</p>
-                
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-4">
                     <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY</label>
                     <div class="flex gap-2">
@@ -72,50 +67,38 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                         <button id="fetchSpotifyBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i> Carica</button>
                     </div>
                     <p class="text-slate-500 text-xs mt-2">💡 La playlist deve essere PUBBLICA su Spotify</p>
-                    <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Caricamento da Spotify...</span></div>
+                    <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Caricamento...</span></div>
                     <div id="spotifyError" class="hidden mt-3 text-red-400 text-sm"></div>
                 </div>
-
-                <div class="flex items-center gap-2 my-4">
-                    <div class="flex-1 h-px bg-slate-700"></div>
-                    <span class="text-slate-500 text-sm">oppure</span>
-                    <div class="flex-1 h-px bg-slate-700"></div>
-                </div>
-
+                <div class="flex items-center gap-2 my-4"><div class="flex-1 h-px bg-slate-700"></div><span class="text-slate-500 text-sm">oppure</span><div class="flex-1 h-px bg-slate-700"></div></div>
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
                     <label class="text-xs text-aura-gold font-bold mb-2 block">📁 METODO 2: CARICA FILE</label>
                     <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-6 text-center hover:border-aura-gold/50 cursor-pointer relative">
                         <input type="file" id="matcherFileInput" accept=".txt,.csv,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
                         <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
                         <p class="text-slate-300" id="matcherDropText">Trascina qui il file .m3u8, .txt o .csv</p>
-                        <p class="text-slate-500 text-xs mt-2">Esporta da Spotify via TuneMyMusic o simili</p>
                     </div>
                 </div>
-
                 <div id="matcherResults" class="hidden mt-6">
                     <div class="grid grid-cols-3 gap-3 mb-4">
                         <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-center"><div class="text-2xl font-bold text-aura-cyan" id="mTotal">0</div><div class="text-xs text-slate-400">Totali</div></div>
                         <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-center"><div class="text-2xl font-bold text-green-400" id="mFound">0</div><div class="text-xs text-slate-400">Presenti</div></div>
                         <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-center"><div class="text-2xl font-bold text-red-400" id="mMissing">0</div><div class="text-xs text-slate-400">Mancanti</div></div>
                     </div>
-                    
                     <div class="flex gap-2 mb-3 flex-wrap">
                         <button id="tabFound" class="tab-btn active bg-green-500/20 border border-green-500 text-green-400 px-4 py-2 rounded-lg text-sm">✅ Presenti</button>
                         <button id="tabMissing" class="tab-btn bg-red-500/20 border border-red-500 text-red-400 px-4 py-2 rounded-lg text-sm">❌ Mancanti</button>
                     </div>
-                    
                     <div id="foundList" class="space-y-2 max-h-64 overflow-y-auto pr-2 mb-4"></div>
                     <div id="missingList" class="hidden space-y-2 max-h-64 overflow-y-auto pr-2 mb-4"></div>
-                    
                     <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
-                        <button id="exportMissingSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i> Cerca Mancanti su Spotify</button>
-                        <button id="exportPresentM3U8Btn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Esporta Presenti .m3u8</button>
-                        <button id="exportMissingM3U8Btn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Esporta Mancanti .m3u8</button>
-                        <button id="createSpotifyPlaylistBtn" class="bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><i data-lucide="music" class="w-4 h-4"></i> Crea Playlist Spotify</button>
+                        <button id="exportMissingSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">🔍 Cerca Mancanti su Spotify</button>
+                        <button id="exportPresentM3U8Btn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">📥 Esporta Presenti .m3u8</button>
+                        <button id="exportMissingM3U8Btn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">📥 Esporta Mancanti .m3u8</button>
+                        <button id="createSpotifyPlaylistBtn" class="bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">🎵 Crea Playlist Spotify</button>
                     </div>
                 </div>
             </section>
-
             <section class="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
                 <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="globe" class="w-5 h-5 text-aura-cyan"></i> 4. Global Charts</h2>
                 <div class="flex gap-2 mb-4 flex-wrap">
@@ -125,4 +108,10 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                     <button id="loadChartsBtn" class="bg-aura-cyan text-slate-900 font-bold px-6 py-2 rounded-lg">Carica</button>
                 </div>
                 <div id="chartsList" class="space-y-2 max-h-64 overflow-y-auto"></div>
-                <div id="chartsActions" class="hidden mt-4"><button id="exportChartsBtn" class="bg-aura-cyan text-slate-900 font-bold px-4 py-2 rounded-lg text-sm">Esporta .m
+                <div id="chartsActions" class="hidden mt-4"><button id="exportChartsBtn" class="bg-aura-cyan text-slate-900 font-bold px-4 py-2 rounded-lg text-sm">Esporta .m3u8</button></div>
+            </section>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

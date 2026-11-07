@@ -7,18 +7,12 @@ let lastMatched = { found: [], missing: [], spotifyTracks: [] };
 let currentCharts = [];
 
 // ==================== SPOTIFY CREDENTIALS ====================
-// ⚠️ SOSTITUISCI CON IL TUO CLIENT SECRET REALE
 const CLIENT_ID = '1308767b4c5946dab3c421a3b58bc8b4';
-const CLIENT_SECRET = '5c0fd128f6e4475f97455bc22b0743d0';
+const CLIENT_SECRET = '5c0fd128f6e4475f97455bc22b0743d0'; // Il tuo Client Secret
 
-// Proxy CORS con fallback (6 proxy diversi in ordine di affidabilità)
+// Proxy CORS (Il tuo Cloudflare Worker)
 const CORS_PROXIES = [
-    'https://corsproxy.org/?',
-    'https://api.codetabs.com/v1/proxy?quest=',
-    'https://cors.bridged.cc/',
-    'https://corsproxy.io/?',
-    'https://api.allorigins.win/raw?url=',
-    'https://thingproxy.freeboard.io/fetch/'
+    'https://aura-spotify-proxy.visitlandia2.workers.dev/?url='
 ];
 
 // ==================== CAMELOT ====================
@@ -65,25 +59,19 @@ const NOISE=['remaster','remastered','2019','2020','2021','2022','2023','2024','
 function norm(t,strict=false){if(!t)return'';let n=t.toString().toLowerCase().replace(/[~"'`´^]/g,' ').replace(/\s*-\s*/g,' ').replace(/\s*[\(\)\[\]]/g,' ').replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi,' ');if(!strict)for(let w of NOISE)n=n.replace(new RegExp('\\b'+w+'\\b','gi'),' ');return n.replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim();}
 function sim(a,b){if(a===b)return 100;if(!a||!b)return 0;if(a.includes(b)||b.includes(a))return(Math.min(a.length,b.length)/Math.max(a.length,b.length))*100;const w1=a.split(' ').filter(w=>w.length>1),w2=b.split(' ').filter(w=>w.length>1);let c=0;for(let x of w1)for(let y of w2)if(x===y){c++;break;}return(c/Math.max(w1.length,w2.length))*100;}
 
-// Funzione per fare fetch con fallback su più proxy
+// Funzione per fare fetch con il tuo Cloudflare Worker
 async function fetchWithProxy(url, options = {}) {
-    let lastError = '';
-    for (let i = 0; i < CORS_PROXIES.length; i++) {
-        const proxy = CORS_PROXIES[i];
+    for (let proxy of CORS_PROXIES) {
         try {
             const fullUrl = proxy + encodeURIComponent(url);
             const response = await fetch(fullUrl, options);
-            if (response.ok) {
-                console.log('✅ Proxy funzionante:', proxy);
-                return response;
-            }
-            lastError = `Proxy ${i+1} (${proxy}): HTTP ${response.status}`;
+            if (response.ok) return response;
         } catch (e) {
-            lastError = `Proxy ${i+1} (${proxy}): ${e.message}`;
+            console.log('Proxy fallito:', proxy);
             continue;
         }
     }
-    throw new Error('Tutti i proxy CORS hanno fallito. ' + lastError);
+    throw new Error('Errore di connessione al proxy. Riprova.');
 }
 
 // METODO 1: Carica da Spotify
@@ -94,16 +82,14 @@ document.getElementById('fetchSpotifyBtn').onclick=async()=>{
     const m=link.match(/playlist\/([a-zA-Z0-9]+)/);if(!m){alert('Link non valido. Deve essere tipo: https://open.spotify.com/playlist/XXXXX');return;}
     const pid=m[1];ld.classList.remove('hidden');er.classList.add('hidden');
     try{
-        // Verifica che il Client Secret sia stato inserito
-        if (CLIENT_SECRET === 'INSERISCI_QUI_IL_TUO_CLIENT_SECRET' || CLIENT_SECRET === '') {
-            throw new Error('⚠️ Client Secret non configurato! Contatta l\'amministratore del sito.');
+        if (CLIENT_SECRET === '' || CLIENT_SECRET === 'INSERISCI_QUI_IL_TUO_CLIENT_SECRET') {
+            throw new Error('⚠️ Client Secret non configurato!');
         }
         
-        // Ottieni token
         const tokRes=await fetchWithProxy('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':'Basic '+btoa(CLIENT_ID+':'+CLIENT_SECRET)},body:'grant_type=client_credentials'});
         if(!tokRes.ok)throw new Error('Errore ottenendo token Spotify. Controlla il Client Secret.');
         const tok=await tokRes.json();
-        // Ottieni tracce
+        
         const trRes=await fetchWithProxy(`https://api.spotify.com/v1/playlists/${pid}/tracks?limit=100&market=IT`,{headers:{'Authorization':'Bearer '+tok.access_token}});
         if(!trRes.ok)throw new Error('Playlist non trovata o privata. Deve essere PUBBLICA.');
         const data=await trRes.json();
@@ -116,7 +102,7 @@ document.getElementById('fetchSpotifyBtn').onclick=async()=>{
         er.innerHTML = `❌ ${e.message}<br><br>
             <div class="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs">
                 <strong>💡 Soluzione alternativa:</strong><br>
-                1. Usa <a href="https://www.tunemymusic.com/it/" target="_blank" class="underline">TuneMyMusic</a> per esportare la playlist Spotify in formato CSV<br>
+                1. Usa <a href="https://www.tunemymusic.com/it/" target="_blank" class="underline text-aura-gold">TuneMyMusic</a> per esportare la playlist Spotify in formato CSV<br>
                 2. Carica il file CSV nel <strong>Metodo 2</strong> qui sotto
             </div>`;
     }finally{ld.classList.add('hidden');}

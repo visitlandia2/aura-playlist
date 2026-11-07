@@ -11,17 +11,6 @@
     let lastMatched = { found: [], missing: [], spotifyTracks: [] };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
-    // Token Spotify da URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get('spotify_access');
-    const refreshToken = urlParams.get('spotify_refresh');
-    if (accessToken && refreshToken) {
-      localStorage.setItem('spotify_access_token', accessToken);
-      localStorage.setItem('spotify_refresh_token', refreshToken);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      alert('✅ Autorizzazione Spotify completata! Ora puoi caricare playlist.');
-    }
-
     function showMsg(t, type) {
       const m = document.getElementById('authMessage');
       if (!m) return;
@@ -190,45 +179,7 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    async function getValidToken() {
-      let accessToken = localStorage.getItem('spotify_access_token');
-      let refreshToken = localStorage.getItem('spotify_refresh_token');
-      if (!accessToken || !refreshToken) return null;
-      const testRes = await fetch(WORKER_URL + '/playlist?id=test', {
-        headers: { 'Authorization': 'Bearer ' + accessToken }
-      });
-      if (testRes.status === 401) {
-        const refreshRes = await fetch(WORKER_URL + '/refresh?refresh=' + refreshToken);
-        const refreshData = await refreshRes.json();
-        if (refreshData.access_token) {
-          localStorage.setItem('spotify_access_token', refreshData.access_token);
-          return refreshData.access_token;
-        }
-        return null;
-      }
-      return accessToken;
-    }
-
-    // Mostra stato token
-    function updateTokenStatus() {
-      const token = localStorage.getItem('spotify_access_token');
-      const statusEl = document.getElementById('tokenStatus');
-      if (statusEl) {
-        if (token) {
-          statusEl.innerText = '✅ Token presente: ' + token.substring(0, 30) + '...';
-          statusEl.className = 'mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded text-xs text-green-300';
-        } else {
-          statusEl.innerText = '❌ Token non presente. Clicca "Autorizza Spotify".';
-          statusEl.className = 'mt-2 p-2 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-300';
-        }
-      }
-    }
-    updateTokenStatus();
-
-    document.getElementById('authSpotifyBtn').onclick = function() {
-      window.location.href = WORKER_URL + '/auth';
-    };
-
+    // Carica playlist Spotify tramite scraper (senza OAuth)
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -238,27 +189,19 @@
       const pid = m[1];
       ld.classList.remove('hidden'); er.classList.add('hidden');
       try {
-        const token = await getValidToken();
-        if (!token) {
-          er.classList.remove('hidden');
-          er.innerHTML = '❌ Devi prima autorizzare Spotify. Clicca "🔗 Autorizza Spotify" qui sopra.';
-          ld.classList.add('hidden');
-          return;
-        }
-        const response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
+        const response = await fetch(WORKER_URL + '/scrape?id=' + pid);
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error('HTTP ' + response.status + ' - ' + errorText);
         }
         const data = await response.json();
-        if (data.error) throw new Error(data.error.message || 'Errore Spotify');
-        const tracks = data.items.map(i => {
-          const t = i.track; if (!t) return null;
-          return { artist: t.artists.map(a => a.name).join(', '), title: t.name, original: t.artists.map(a => a.name).join(', ') + ' - ' + t.name };
-        }).filter(t => t);
-        if (!tracks.length) throw new Error('Nessuna traccia');
+        if (data.error) throw new Error(data.error);
+        const tracks = data.items.map(i => ({
+          artist: i.track.artist,
+          title: i.track.title,
+          original: i.track.original
+        }));
+        if (!tracks.length) throw new Error('Nessuna traccia trovata');
         lastMatched.spotifyTracks = tracks; doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');

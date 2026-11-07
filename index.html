@@ -1,255 +1,136 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AURA PLAYLIST GENERATION - Engine DJ</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="lib.js"></script>
-    <script>
-        tailwind.config = {
-            theme: { extend: { colors: { aura: { dark: '#0B0F19', panel: '#1E293B', gold: '#D4AF37', cyan: '#00F0FF', tidal: '#00FFFF' } } } }
-        }
-    </script>
-</head>
-<body class="min-h-screen flex flex-col">
-    <div id="loginScreen" class="flex-1 flex items-center justify-center p-4">
-        <div class="glass w-full max-w-md rounded-2xl p-8 shadow-2xl">
-            <div class="flex justify-center mb-6">
-                <div class="bg-gradient-to-br from-aura-gold to-yellow-600 p-3 rounded-full">
-                    <i data-lucide="music" class="w-8 h-8 text-aura-dark"></i>
-                </div>
-            </div>
-            <h1 class="text-3xl font-bold text-center mb-2">AURA</h1>
-            <p class="text-slate-400 text-center mb-8">Playlist Generation<br><span class="text-aura-gold text-sm">Engine DJ Edition</span></p>
-            <div id="authMessage" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
-            <form id="loginForm" class="space-y-4">
-                <div class="relative">
-                    <i data-lucide="mail" class="absolute left-3 top-3 w-5 h-5 text-slate-400"></i>
-                    <input type="email" id="email" placeholder="La tua email" class="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-aura-gold transition-colors" required>
-                </div>
-                <div class="relative">
-                    <i data-lucide="lock" class="absolute left-3 top-3 w-5 h-5 text-slate-400"></i>
-                    <input type="password" id="password" placeholder="Password (min. 6 caratteri)" minlength="6" class="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-aura-gold transition-colors" required>
-                </div>
-                <div id="resetLink" class="text-right">
-                    <button type="button" id="forgotPasswordBtn" class="text-xs text-slate-400 hover:text-aura-gold transition-colors">Password dimenticata?</button>
-                </div>
-                <button type="submit" id="authSubmitBtn" class="w-full bg-gradient-to-r from-aura-gold to-yellow-600 text-aura-dark font-bold py-3 rounded-lg hover:shadow-lg hover:shadow-aura-gold/20 transition-all">Accedi</button>
-            </form>
-            <p class="text-center text-slate-400 mt-6 text-sm">
-                <span id="switchText">Non hai un account?</span>
-                <button id="switchModeBtn" class="text-aura-gold hover:underline font-semibold ml-1">Registrati</button>
-            </p>
-        </div>
-    </div>
+lucide.createIcons();
+let authMode = 'login';
+let userLibrary = [];
+let playlistStructure = {};
+let selectedTracks = new Set();
+let lastMatched = { found: [], missing: [], spotifyTracks: [] };
+let currentCharts = [];
 
-    <div id="dashboardScreen" class="hidden flex-1 flex flex-col">
-        <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
-            <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-                <div class="flex items-center gap-3">
-                    <i data-lucide="sparkles" class="w-6 h-6 text-aura-gold"></i>
-                    <h1 class="text-xl font-bold tracking-wide">AURA <span class="text-slate-400 font-normal">ENGINE DJ</span></h1>
-                </div>
-                <div class="flex items-center gap-4">
-                    <span id="userEmail" class="text-sm text-slate-400 hidden sm:block"></span>
-                    <button onclick="logout()" class="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
-                        <i data-lucide="log-out" class="w-4 h-4"></i> Esci
-                    </button>
-                </div>
-            </div>
-        </header>
+// ==================== SPOTIFY CREDENTIALS ====================
+// ⚠️ SOSTITUISCI CON IL TUO CLIENT SECRET REALE
+const CLIENT_ID = '1308767b4c5946dab3c421a3b58bc8b4';
+const CLIENT_SECRET = '5c0fd128f6e4475f97455bc22b0743d0';
+const CORS_PROXY = 'https://corsproxy.io/?';
 
-        <main class="max-w-6xl mx-auto px-6 py-10 flex-1 space-y-8">
-            
-            <section class="glass rounded-2xl p-8">
-                <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
-                    <i data-lucide="upload" class="w-5 h-5 text-aura-cyan"></i> 1. Importa la tua Libreria Engine DJ
-                </h2>
-                <p class="text-slate-400 mb-6 text-sm">Esporta da Engine DJ in formato <span class="text-aura-gold font-mono">.m3u8</span> o da Rekordbox in <span class="text-slate-300 font-mono">.xml</span>. La libreria verrà salvata nel cloud.</p>
-                <div id="dropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-10 text-center hover:border-aura-gold/50 hover:bg-aura-gold/5 transition-all cursor-pointer relative">
-                    <input type="file" id="fileInput" accept=".xml,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                    <i data-lucide="music" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
-                    <p class="text-slate-300 font-medium" id="dropText">Trascina qui il file .m3u8 o .xml</p>
-                </div>
-                <div id="resultArea" class="hidden mt-6 bg-slate-900/50 rounded-lg p-4 border border-slate-700">
-                    <h3 class="text-aura-gold font-semibold mb-2 flex items-center gap-2">
-                        <i data-lucide="check-circle" class="w-4 h-4"></i> Libreria caricata!
-                    </h3>
-                    <p class="text-sm text-slate-300" id="resultText"></p>
-                </div>
-            </section>
+// ==================== CAMELOT ====================
+const CAMELOT_MAP = {'am':'8A','a':'8A','em':'9A','e':'9A','bm':'10A','b':'10A','f#m':'11A','gbm':'11A','c#m':'12A','dbm':'12A','g#m':'1A','abm':'1A','d#m':'2A','ebm':'2A','a#m':'3A','bbm':'3A','c':'8B','g':'9B','d':'10B','a':'11B','e':'12B','b':'1B','f#':'2B','gb':'2B','c#':'3B','db':'3B','g#':'4B','ab':'4B','d#':'5B','eb':'5B','a#':'6B','bb':'6B','f':'7B'};
+function getCamelot(k){if(!k)return'?';const x=k.toString().toLowerCase().trim();if(/^\d+[AB]$/.test(x))return x.toUpperCase();return CAMELOT_MAP[x]||'?';}
+function getEnergy(bpm){if(!bpm||bpm==='?')return 5;const b=parseFloat(bpm);if(b<110)return 3;if(b<120)return 5;if(b<128)return 7;return 9;}
 
-            <section class="glass rounded-2xl p-8">
-                <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="folder-tree" class="w-6 h-6 text-aura-gold"></i> 2. Le Tue Playlist (come Engine DJ)
-                </h2>
-                <p class="text-slate-400 mb-6 text-sm">Tutte le tue playlist organizzate ad albero. Clicca sulle cartelle per espanderle.</p>
-                
-                <div class="mb-4 flex gap-2 flex-wrap">
-                    <button id="expandAllBtn" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm"> Espandi Tutto</button>
-                    <button id="collapseAllBtn" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm"> Comprimi Tutto</button>
-                    <button id="selectAllPlaylistsBtn" class="bg-aura-gold hover:bg-aura-gold/80 text-slate-900 px-4 py-2 rounded-lg text-sm font-bold">✅ Seleziona Tutte</button>
-                </div>
+// ==================== AUTH ====================
+function showMsg(t,type='error'){const m=document.getElementById('authMessage');m.classList.remove('hidden','bg-red-500/20','border-red-500','text-red-300','bg-green-500/20','border-green-500','text-green-300');m.classList.add(type==='error'?'bg-red-500/20 border border-red-500 text-red-300':'bg-green-500/20 border border-green-500 text-green-300');m.innerText=t;}
+function updateAuthUI(){const b=document.getElementById('authBtn'),s=document.getElementById('switchText'),sw=document.getElementById('switchBtn');if(authMode==='login'){b.innerText='Accedi';s.innerText='Non hai un account?';sw.innerText='Registrati';}else{b.innerText='Crea Account';s.innerText='Hai già un account?';sw.innerText='Accedi';}}
+document.getElementById('switchBtn').onclick=()=>{authMode=authMode==='login'?'register':'login';updateAuthUI();};
+document.getElementById('forgotBtn').onclick=async()=>{const e=document.getElementById('email').value;if(!e){alert('Inserisci prima la email');return;}try{await supabase.resetPassword(e);showMsg('📧 Email inviata','success');}catch(err){showMsg('❌ '+err.message);}};
 
-                <div id="playlistTree" class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 max-h-[600px] overflow-y-auto">
-                    <p class="text-center text-slate-500 py-8">Carica la libreria per vedere le playlist.</p>
-                </div>
+document.getElementById('loginForm').onsubmit=async(e)=>{e.preventDefault();const em=document.getElementById('email').value.trim(),pw=document.getElementById('password').value,b=document.getElementById('authBtn'),ot=b.innerText;b.disabled=true;b.innerText='...';try{if(authMode==='login'){await supabase.signIn(em,pw);showDash();}else{await supabase.signUp(em,pw);showMsg('✅ Account creato!','success');authMode='login';updateAuthUI();}}catch(err){showMsg('❌ '+(err.message||'Errore'));}finally{b.disabled=false;b.innerText=ot;}};
 
-                <div class="mt-4 p-3 bg-aura-gold/10 border border-aura-gold/30 rounded-lg">
-                    <p class="text-aura-gold text-sm font-semibold">Tracce selezionate: <span id="selectedTracksCount">0</span></p>
-                </div>
-            </section>
+function showDash(){const u=supabase.getUser();document.getElementById('loginScreen').classList.add('hidden');document.getElementById('dashboardScreen').classList.remove('hidden');if(u?.email)document.getElementById('userEmail').innerText=u.email;loadSaved();}
+function logout(){supabase.signOut();document.getElementById('dashboardScreen').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');}
+if(supabase.isLoggedIn())showDash();else updateAuthUI();
 
-            <section class="glass rounded-2xl p-8">
-                <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="git-compare" class="w-6 h-6 text-aura-gold"></i> 3. Track Matcher — Confronta Playlist
-                </h2>
-                <p class="text-slate-400 mb-6 text-sm">Incolla il link di una playlist <b>Spotify</b> (o carica un file) e scopri quali tracce hai già nella tua libreria.</p>
-                
-                <!-- METODO 1: LINK SPOTIFY -->
-                <div class="mb-6">
-                    <label class="text-xs text-aura-gold uppercase font-bold mb-2 block">✨ Metodo 1: Link Spotify (consigliato)</label>
-                    <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
-                        <p class="text-slate-400 text-xs mb-3">Incolla il link di una playlist Spotify <b>pubblica</b>. Esempio: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M</p>
-                        <div class="flex gap-2">
-                            <input type="text" id="spotifyLinkInput" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
-                            <button id="fetchSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2 hover:shadow-lg transition-all">
-                                <i data-lucide="link" class="w-4 h-4"></i> Carica da Spotify
-                            </button>
-                        </div>
-                        <div id="spotifyLoading" class="hidden mt-3 text-center">
-                            <div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-                            <span class="text-slate-400 text-sm ml-2">Caricamento tracce da Spotify...</span>
-                        </div>
-                        <div id="spotifyError" class="hidden mt-3 text-red-400 text-sm"></div>
-                    </div>
-                </div>
+// ==================== IMPORT LIBRERIA ====================
+const dz=document.getElementById('dropZone'),fi=document.getElementById('fileInput');
+['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('border-aura-gold');}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('border-aura-gold');}));
+dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
+fi.onchange=e=>{if(e.target.files.length)handleFile(e.target.files[0]);};
 
-                <div class="mb-6 flex items-center gap-2">
-                    <div class="flex-1 h-px bg-slate-700"></div>
-                    <span class="text-slate-500 text-sm">oppure</span>
-                    <div class="flex-1 h-px bg-slate-700"></div>
-                </div>
+function handleFile(file){document.getElementById('dropText').innerText='Analisi...';const r=new FileReader();r.onload=e=>{const c=e.target.result;let tracks=[],pls={};
+if(file.name.endsWith('.xml')){const p=new DOMParser(),x=p.parseFromString(c,'text/xml');tracks=Array.from(x.getElementsByTagName('TRACK')).map(n=>({artist:n.getAttribute('Artist')||'Unknown',title:n.getAttribute('Name')||'Unknown',bpm:n.getAttribute('BPM')||'?',key:getCamelot(n.getAttribute('Key')||'?'),energy:getEnergy(n.getAttribute('BPM'))}));pls={'Collection':tracks};}
+else if(file.name.endsWith('.m3u8')||file.name.endsWith('.m3u')){const lines=c.split(/\r?\n/);let cp='Collection',ct='',ca='';pls[cp]=[];for(let l of lines){l=l.trim();if(l.startsWith('#PLAYLIST:')){cp=l.substring(10).trim();if(!pls[cp])pls[cp]=[];}else if(l.startsWith('#EXTINF:')){const ci=l.indexOf(',');if(ci>-1){const m=l.substring(ci+1).trim(),p=m.split(' - ');if(p.length>=2){ca=p[0].trim();ct=p.slice(1).join(' - ').trim();}else{ca='Unknown';ct=m;}}}else if(l&&!l.startsWith('#')&&ct!==''){const t={artist:ca,title:ct,bpm:'?',key:'?',energy:5,playlist:cp};tracks.push(t);if(!pls[cp])pls[cp]=[];pls[cp].push(t);ct='';ca='';}}}
+else{alert('Formato non supportato');return;}
+userLibrary=tracks;playlistStructure=pls;document.getElementById('dropText').innerText='Trascina qui il file';document.getElementById('resultArea').classList.remove('hidden');document.getElementById('resultText').innerText=`✅ ${tracks.length} tracce in ${Object.keys(pls).length} playlist`;renderTree();saveCloud();};r.readAsText(file);}
 
-                <!-- METODO 2: FILE -->
-                <div>
-                    <label class="text-xs text-slate-400 uppercase font-bold mb-2 block">Metodo 2: File esportato (.m3u8, .txt, .csv)</label>
-                    <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-aura-gold/50 hover:bg-aura-gold/5 transition-all cursor-pointer relative">
-                        <input type="file" id="matcherFileInput" accept=".txt,.csv,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                        <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>
-                        <p class="text-slate-300 font-medium" id="matcherDropText">Trascina qui il file o clicca per selezionare</p>
-                        <p class="text-slate-500 text-xs mt-2">Supporta .m3u8, .csv, .txt</p>
-                    </div>
-                </div>
+function renderTree(){const t=document.getElementById('playlistTree');if(!Object.keys(playlistStructure).length){t.innerHTML='<p class="text-center text-slate-500 py-8">Nessuna playlist</p>';return;}let h='';for(let[n,tr]of Object.entries(playlistStructure)){h+=`<div class="mb-2"><div class="folder-h bg-slate-800 p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📁 ${n}</span><span class="text-xs text-slate-400">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;tr.forEach((tk,i)=>{h+=`<label class="flex items-center gap-2 p-1 hover:bg-slate-800 rounded cursor-pointer"><input type="checkbox" class="tcb" data-id="${n}-${i}" onchange="updSel()"> <span class="text-sm">${tk.artist} - ${tk.title}</span></label>`;});h+='</div></div>';}t.innerHTML=h;}
+document.getElementById('expandAllBtn').onclick=()=>document.querySelectorAll('.folder-h+div').forEach(d=>d.classList.remove('hidden'));
+document.getElementById('collapseAllBtn').onclick=()=>document.querySelectorAll('.folder-h+div').forEach(d=>d.classList.add('hidden'));
+document.getElementById('selectAllBtn').onclick=()=>{document.querySelectorAll('.tcb').forEach(c=>c.checked=true);updSel();};
+function updSel(){selectedTracks.clear();document.querySelectorAll('.tcb:checked').forEach(c=>selectedTracks.add(c.dataset.id));document.getElementById('selectedCount').innerText=selectedTracks.size;}
 
-                <!-- RISULTATI -->
-                <div id="matcherResults" class="hidden mt-6">
-                    <div class="grid grid-cols-3 gap-4 mb-6">
-                        <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 text-center">
-                            <div class="text-3xl font-bold text-aura-cyan" id="matcherTotal">0</div>
-                            <div class="text-xs text-slate-400 mt-1">Totali</div>
-                        </div>
-                        <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
-                            <div class="text-3xl font-bold text-green-400" id="matcherFound">0</div>
-                            <div class="text-xs text-slate-400 mt-1">Presenti</div>
-                        </div>
-                        <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-center">
-                            <div class="text-3xl font-bold text-yellow-400" id="matcherUncertain">0</div>
-                            <div class="text-xs text-slate-400 mt-1">Possibili</div>
-                        </div>
-                    </div>
-                    <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-center mb-6">
-                        <div class="text-3xl font-bold text-red-400" id="matcherMissing">0</div>
-                        <div class="text-xs text-slate-400 mt-1">Mancanti</div>
-                    </div>
-                    <div class="flex gap-2 mb-4 flex-wrap">
-                        <button id="showFoundBtn" class="matcher-tab active px-4 py-2 bg-green-500/20 border border-green-500 text-green-400 rounded-lg text-sm font-semibold">✅ Presenti (<span id="foundCount">0</span>)</button>
-                        <button id="showUncertainBtn" class="matcher-tab px-4 py-2 bg-yellow-500/20 border border-yellow-500 text-yellow-400 rounded-lg text-sm">⚠️ Possibili (<span id="uncertainCount">0</span>)</button>
-                        <button id="showMissingBtn" class="matcher-tab px-4 py-2 bg-red-500/20 border border-red-500 text-red-400 rounded-lg text-sm">❌ Mancanti (<span id="missingCount">0</span>)</button>
-                    </div>
-                    <div id="foundList" class="space-y-2 max-h-80 overflow-y-auto pr-2 mb-4"></div>
-                    <div id="uncertainList" class="hidden space-y-2 max-h-80 overflow-y-auto pr-2 mb-4"></div>
-                    <div id="missingList" class="hidden space-y-2 max-h-80 overflow-y-auto pr-2 mb-4"></div>
-                    <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
-                        <button id="exportMissingBtn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                            <i data-lucide="download" class="w-4 h-4"></i> Esporta Mancanti con link
-                        </button>
-                    </div>
-                </div>
-            </section>
+async function saveCloud(){if(!supabase.isLoggedIn()||!userLibrary.length)return;try{await supabase.saveLibrary(userLibrary,'Libreria');}catch(e){console.error(e);}}
+async function loadSaved(){if(!supabase.isLoggedIn())return;try{const s=await supabase.loadLibrary();if(s?.tracks?.length){userLibrary=s.tracks;playlistStructure={'Collection':userLibrary};renderTree();}}catch(e){}}
 
-            <section class="glass rounded-2xl p-8">
-                <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-                    <i data-lucide="globe" class="w-6 h-6 text-aura-cyan"></i> 4. Global Charts
-                </h2>
-                <div class="flex flex-wrap gap-2 mb-6">
-                    <select id="countrySelect" class="bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-aura-gold">
-                        <optgroup label="🌍 MONDO">
-                            <option value="us">🇸 USA</option>
-                            <option value="gb">🇬🇧 UK</option>
-                        </optgroup>
-                        <optgroup label="🇪🇺 EUROPA OVEST">
-                            <option value="it">🇹 Italia</option>
-                            <option value="de">🇩 Germania</option>
-                            <option value="fr">🇫🇷 Francia</option>
-                            <option value="es">🇪 Spagna</option>
-                            <option value="ie">🇮🇪 Irlanda</option>
-                            <option value="be">🇧 Belgio</option>
-                            <option value="at">🇦🇹 Austria</option>
-                            <option value="ch">🇭 Svizzera</option>
-                            <option value="nl">🇳 Olanda</option>
-                            <option value="pt">🇵🇹 Portogallo</option>
-                            <option value="gr">🇬🇷 Grecia</option>
-                            <option value="dk">🇰 Danimarca</option>
-                            <option value="se">🇪 Svezia</option>
-                            <option value="no">🇳🇴 Norvegia</option>
-                            <option value="fi">🇫🇮 Finlandia</option>
-                        </optgroup>
-                        <optgroup label="🇪🇺 EUROPA EST">
-                            <option value="pl">🇱 Polonia</option>
-                            <option value="cz">🇨 Rep. Ceca</option>
-                            <option value="hu">🇭🇺 Ungheria</option>
-                            <option value="ro">🇷🇴 Romania</option>
-                            <option value="bg">🇧🇬 Bulgaria</option>
-                            <option value="hr">🇭🇷 Croazia</option>
-                            <option value="rs">🇷🇸 Serbia</option>
-                            <option value="sk">🇸 Slovacchia</option>
-                            <option value="si">🇸 Slovenia</option>
-                            <option value="ee">🇪🇪 Estonia</option>
-                            <option value="lv">🇱 Lettonia</option>
-                            <option value="lt">🇱🇹 Lituania</option>
-                            <option value="ua">🇺🇦 Ucraina</option>
-                            <option value="ru">🇷 Russia</option>
-                            <option value="al">🇦🇱 Albania</option>
-                        </optgroup>
-                        <optgroup label="🌎 ALTRO">
-                            <option value="br">🇧🇷 Brasile</option>
-                            <option value="mx">🇲🇽 Messico</option>
-                            <option value="ar">🇦 Argentina</option>
-                            <option value="jp">🇯🇵 Giappone</option>
-                            <option value="kr">🇰 Corea del Sud</option>
-                            <option value="au">🇦🇺 Australia</option>
-                            <option value="tr">🇹🇷 Turchia</option>
-                        </optgroup>
-                    </select>
-                    <button id="loadChartsBtn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-6 py-2 rounded-lg flex items-center gap-2">
-                        <i data-lucide="search" class="w-4 h-4"></i> Carica Classifica
-                    </button>
-                </div>
-                <div id="chartsLoading" class="hidden text-center py-8"><div class="inline-block w-8 h-8 border-4 border-aura-cyan border-t-transparent rounded-full animate-spin"></div></div>
-                <div id="chartsError" class="hidden text-center py-8 text-red-400"></div>
-                <div id="chartsList" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
-                <div id="chartsActions" class="hidden mt-6 pt-6 border-t border-slate-700">
-                    <button id="exportM3U8Btn" class="bg-gradient-to-r from-aura-tidal to-blue-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                        <i data-lucide="download" class="w-4 h-4"></i> Esporta .m3u8
-                    </button>
-                </div>
-            </section>
-        </main>
-    </div>
-    <script src="script.js"></script>
-</body>
-</html>
+// ==================== TRACK MATCHER ====================
+const NOISE=['remaster','remastered','2019','2020','2021','2022','2023','2024','2025','official video','official audio','feat','ft','featuring','remix','extended','radio edit','club mix','live','version','edit','mix','hq','hd'];
+function norm(t,strict=false){if(!t)return'';let n=t.toString().toLowerCase().replace(/[~"'`´^]/g,' ').replace(/\s*-\s*/g,' ').replace(/\s*[\(\)\[\]]/g,' ').replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi,' ');if(!strict)for(let w of NOISE)n=n.replace(new RegExp('\\b'+w+'\\b','gi'),' ');return n.replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim();}
+function sim(a,b){if(a===b)return 100;if(!a||!b)return 0;if(a.includes(b)||b.includes(a))return(Math.min(a.length,b.length)/Math.max(a.length,b.length))*100;const w1=a.split(' ').filter(w=>w.length>1),w2=b.split(' ').filter(w=>w.length>1);let c=0;for(let x of w1)for(let y of w2)if(x===y){c++;break;}return(c/Math.max(w1.length,w2.length))*100;}
+
+document.getElementById('fetchSpotifyBtn').onclick=async()=>{
+    const link=document.getElementById('spotifyLink').value.trim();
+    const ld=document.getElementById('spotifyLoading'),er=document.getElementById('spotifyError');
+    if(!link){alert('Incolla il link Spotify');return;}
+    const m=link.match(/playlist\/([a-zA-Z0-9]+)/);if(!m){alert('Link non valido');return;}
+    const pid=m[1];ld.classList.remove('hidden');er.classList.add('hidden');
+    try{
+        // Ottieni token
+        const tokRes=await fetch(CORS_PROXY+encodeURIComponent('https://accounts.spotify.com/api/token'),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':'Basic '+btoa(CLIENT_ID+':'+CLIENT_SECRET)},body:'grant_type=client_credentials'});
+        if(!tokRes.ok)throw new Error('Errore token Spotify');
+        const tok=await tokRes.json();
+        // Ottieni tracce
+        const trRes=await fetch(CORS_PROXY+encodeURIComponent(`https://api.spotify.com/v1/playlists/${pid}/tracks?limit=100&market=IT`),{headers:{'Authorization':'Bearer '+tok.access_token}});
+        if(!trRes.ok)throw new Error('Playlist non trovata o privata');
+        const data=await trRes.json();
+        const tracks=data.items.map(i=>{const t=i.track;if(!t)return null;return{artist:t.artists.map(a=>a.name).join(', '),title:t.name,original:t.artists.map(a=>a.name).join(', ')+' - '+t.name};}).filter(t=>t);
+        if(!tracks.length)throw new Error('Nessuna traccia');
+        lastMatched.spotifyTracks=tracks;
+        doMatch(tracks);
+    }catch(e){er.classList.remove('hidden');er.innerText='❌ '+e.message;}finally{ld.classList.add('hidden');}
+};
+
+function doMatch(spTracks){
+    if(!userLibrary.length){alert('⚠️ Carica prima la libreria!');return;}
+    const found=[],missing=[];
+    for(let sp of spTracks){let best=null,bs={t:0,a:0};for(let lib of userLibrary){const as=sim(norm(sp.artist,true),norm(lib.artist,true)),ts=sim(norm(sp.title,false),norm(lib.title,false)),tot=as>=90?as*0.8+ts*0.2:as*0.6+ts*0.4;if(tot>bs.t){bs={t:tot,a:as};best=lib;}}
+    if(bs.a>=85)found.push({...sp,match:best,score:bs});else missing.push(sp);}
+    lastMatched={found,missing,spotifyTracks:spTracks};
+    document.getElementById('matcherResults').classList.remove('hidden');
+    document.getElementById('mTotal').innerText=spTracks.length;
+    document.getElementById('mFound').innerText=found.length;
+    document.getElementById('mMissing').innerText=missing.length;
+    renderFound();renderMissing();
+}
+
+function renderFound(){const l=document.getElementById('foundList');if(!lastMatched.found.length){l.innerHTML='<p class="text-center text-slate-500 py-4">Nessun match</p>';return;}l.innerHTML=lastMatched.found.map(t=>`<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');lucide.createIcons();}
+function renderMissing(){const l=document.getElementById('missingList');if(!lastMatched.missing.length){l.innerHTML='<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>';return;}l.innerHTML=lastMatched.missing.map(t=>`<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded">Spotify</a></div>`).join('');lucide.createIcons();}
+
+document.getElementById('tabFound').onclick=()=>{document.getElementById('foundList').classList.remove('hidden');document.getElementById('missingList').classList.add('hidden');document.getElementById('tabFound').classList.add('active');document.getElementById('tabMissing').classList.remove('active');};
+document.getElementById('tabMissing').onclick=()=>{document.getElementById('foundList').classList.add('hidden');document.getElementById('missingList').classList.remove('hidden');document.getElementById('tabMissing').classList.add('active');document.getElementById('tabFound').classList.remove('active');};
+
+// Crea playlist Spotify con le mancanti
+document.getElementById('exportMissingSpotifyBtn').onclick=()=>{
+    if(!lastMatched.missing.length){alert('Nessuna traccia mancante');return;}
+    const q=lastMatched.missing.map(t=>encodeURIComponent(t.original)).join(',');
+    const url=`https://open.spotify.com/search/${q}`;
+    window.open(url,'_blank');
+    alert('🎵 Spotify aperto con le tracce mancanti!\n\nAggiungile manualmente alla tua playlist, oppure usa il pulsante "Esporta Mancanti .m3u8" per importarle in Engine DJ dopo averle scaricate.');
+};
+
+// Esporta presenti per Engine DJ
+document.getElementById('exportPresentM3U8Btn').onclick=()=>{
+    if(!lastMatched.found.length){alert('Nessuna traccia presente');return;}
+    let m='#EXTM3U\n# PLAYLIST: AURA - Tracce Presenti (da Engine DJ)\n\n';
+    lastMatched.found.forEach(t=>{m+=`#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`;});
+    dl(m,'AURA_Presenti_EngineDJ');
+};
+
+// Esporta mancanti .m3u8
+document.getElementById('exportMissingM3U8Btn').onclick=()=>{
+    if(!lastMatched.missing.length){alert('Nessuna traccia mancante');return;}
+    let m='#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n\n';
+    lastMatched.missing.forEach(t=>{m+=`#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`;});
+    dl(m,'AURA_Mancanti');
+};
+
+function dl(c,f){const b=new Blob([c],{type:'audio/x-mpegurl'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=f+'_'+new Date().toISOString().split('T')[0]+'.m3u8';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);}
+
+// ==================== GLOBAL CHARTS ====================
+document.getElementById('loadChartsBtn').onclick=async()=>{
+    const c=document.getElementById('countrySelect').value,l=document.getElementById('chartsList'),ca=document.getElementById('chartsActions');
+    l.innerHTML='<p class="text-center text-slate-400 py-4">Caricamento...</p>';ca.classList.add('hidden');
+    try{const r=await fetch(`https://itunes.apple.com/${c}/rss/topsongs/limit=50/json`);if(!r.ok)throw new Error('Errore');const d=await r.json(),e=d.feed?.entry||[];if(!e.length)throw new Error('Nessuna traccia');
+    currentCharts=e.map((x,i)=>({rank:i+1,title:x.title?.label||'Unknown',artist:x['im:artist']?.label||'Unknown',cover:x['im:image']?.[2]?.label||''}));
+    l.innerHTML=currentCharts.map(t=>`<div class="bg-slate-900/50 border border-slate-700 rounded p-2 flex items-center gap-2"><span class="text-aura-gold font-bold w-8">#${t.rank}</span><img src="${t.cover}" class="w-10 h-10 rounded"><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.title}</div><div class="text-xs text-slate-400">${t.artist}</div></div></div>`).join('');ca.classList.remove('hidden');}
+    catch(e){l.innerHTML=`<p class="text-center text-red-400 py-4">❌ ${e.message}</p>`;}
+};
+document.getElementById('exportChartsBtn').onclick=()=>{if(!currentCharts.length)return;let m='#EXTM3U\n# PLAYLIST: AURA - Global Charts\n\n';currentCharts.forEach(t=>{m+=`#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`;});dl(m,'AURA_Charts');};

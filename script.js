@@ -6,6 +6,15 @@
     let lastMatched = { found: [], missing: [], spotifyTracks: [] };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
+    // Controlla se c'è un token nell'URL (ritorno da autorizzazione Spotify)
+    const urlParams = new URLSearchParams(window.location.search);
+    const spotifyToken = urlParams.get('spotify_token');
+    if (spotifyToken) {
+      localStorage.setItem('spotify_token', spotifyToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      alert('✅ Autorizzazione Spotify completata! Ora puoi caricare playlist.');
+    }
+
     function showMsg(t, type) {
       const m = document.getElementById('authMessage'); if (!m) return;
       m.classList.remove('hidden');
@@ -129,18 +138,9 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // Autorizza Spotify
+    // Autorizza Spotify - redirect diretto (non popup)
     document.getElementById('authSpotifyBtn').onclick = function() {
-      const popup = window.open(WORKER_URL + '/auth', 'Spotify Auth', 'width=600,height=700');
-      const checkAuth = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkAuth);
-          const token = localStorage.getItem('spotify_token');
-          if (token) {
-            alert('✅ Autorizzazione completata! Ora puoi caricare playlist.');
-          }
-        }
-      }, 500);
+      window.location.href = WORKER_URL + '/auth';
     };
 
     document.getElementById('fetchSpotifyBtn').onclick = async function() {

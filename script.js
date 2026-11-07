@@ -3,7 +3,7 @@
   function init() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
     let authMode = 'login', userLibrary = [], playlistStructure = {}, selectedTracks = new Set();
-    let lastMatched = { found: [], missing: [], spotifyTracks: [] }, currentCharts = [];
+    let lastMatched = { found: [], missing: [], spotifyTracks: [] };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
     function showMsg(t, type) {
@@ -135,6 +135,14 @@
       return response;
     }
 
+    // Pulsante Autorizza Spotify
+    const authSpotifyBtn = document.getElementById('authSpotifyBtn');
+    if (authSpotifyBtn) {
+      authSpotifyBtn.onclick = function() {
+        window.open(WORKER_URL + '/auth', '_blank');
+      };
+    }
+
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -146,7 +154,7 @@
       try {
         const res = await fetchFromWorker('/playlist?id=' + pid);
         const data = await res.json();
-        if (data.error) throw new Error(data.error.message || 'Errore Spotify');
+        if (data.error) throw new Error(data.error);
         const tracks = data.items.map(i => {
           const t = i.track; if (!t) return null;
           return { artist: t.artists.map(a => a.name).join(', '), title: t.name, original: t.artists.map(a => a.name).join(', ') + ' - ' + t.name };
@@ -155,7 +163,7 @@
         lastMatched.spotifyTracks = tracks; doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}<br><div class="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs"><strong>💡 Alternativa:</strong> Usa <a href="https://www.tunemymusic.com/it/" target="_blank" class="underline text-aura-gold">TuneMyMusic</a> per esportare in CSV e usalo nel Metodo 2</div>`;
+        er.innerHTML = `❌ ${e.message}<br><div class="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs"><strong>💡 Prima autorizza:</strong> clicca "🔗 Autorizza Spotify" qui sopra, autorizza l'app, poi riprova.</div>`;
       } finally { ld.classList.add('hidden'); }
     };
 

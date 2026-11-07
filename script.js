@@ -1,631 +1,131 @@
 lucide.createIcons();
 let authMode = 'login';
-let userLibrary = []; 
+let userLibrary = [];
 let playlistStructure = {};
 let selectedTracks = new Set();
+let lastMatched = { found: [], missing: [], spotifyTracks: [] };
 let currentCharts = [];
-let lastMatchedTracks = { found: [], uncertain: [], missing: [] };
 
-// ==================== CAMELOT & UTILITY ====================
-const CAMELOT_MAP = {
-    'am': '8A', 'a': '8A', 'em': '9A', 'e': '9A', 'bm': '10A', 'b': '10A',
-    'f#m': '11A', 'gbm': '11A', 'c#m': '12A', 'dbm': '12A',
-    'g#m': '1A', 'abm': '1A', 'd#m': '2A', 'ebm': '2A', 'a#m': '3A', 'bbm': '3A',
-    'c': '8B', 'g': '9B', 'd': '10B', 'a': '11B', 'e': '12B', 'b': '1B',
-    'f#': '2B', 'gb': '2B', 'c#': '3B', 'db': '3B', 'g#': '4B', 'ab': '4B',
-    'd#': '5B', 'eb': '5B', 'a#': '6B', 'bb': '6B', 'f': '7B'
-};
+// ==================== SPOTIFY CREDENTIALS ====================
+// ⚠️ SOSTITUISCI CON IL TUO CLIENT SECRET REALE
+const CLIENT_ID = '1308767b4c5946dab3c421a3b58bc8b4';
+const CLIENT_SECRET = '5c0fd128f6e4475f97455bc22b0743d0';
+const CORS_PROXY = 'https://corsproxy.io/?';
 
-function getCamelot(keyStr) {
-    if (!keyStr) return '?';
-    const k = keyStr.toString().toLowerCase().trim();
-    if (/^\d+[AB]$/.test(k)) return k.toUpperCase();
-    return CAMELOT_MAP[k] || '?';
-}
+// ==================== CAMELOT ====================
+const CAMELOT_MAP = {'am':'8A','a':'8A','em':'9A','e':'9A','bm':'10A','b':'10A','f#m':'11A','gbm':'11A','c#m':'12A','dbm':'12A','g#m':'1A','abm':'1A','d#m':'2A','ebm':'2A','a#m':'3A','bbm':'3A','c':'8B','g':'9B','d':'10B','a':'11B','e':'12B','b':'1B','f#':'2B','gb':'2B','c#':'3B','db':'3B','g#':'4B','ab':'4B','d#':'5B','eb':'5B','a#':'6B','bb':'6B','f':'7B'};
+function getCamelot(k){if(!k)return'?';const x=k.toString().toLowerCase().trim();if(/^\d+[AB]$/.test(x))return x.toUpperCase();return CAMELOT_MAP[x]||'?';}
+function getEnergy(bpm){if(!bpm||bpm==='?')return 5;const b=parseFloat(bpm);if(b<110)return 3;if(b<120)return 5;if(b<128)return 7;return 9;}
 
-function getEnergy(bpm) {
-    if (!bpm || bpm === '?') return 5;
-    const b = parseFloat(bpm);
-    if (b < 110) return 3;
-    if (b < 120) return 5;
-    if (b < 128) return 7;
-    return 9;
-}
+// ==================== AUTH ====================
+function showMsg(t,type='error'){const m=document.getElementById('authMessage');m.classList.remove('hidden','bg-red-500/20','border-red-500','text-red-300','bg-green-500/20','border-green-500','text-green-300');m.classList.add(type==='error'?'bg-red-500/20 border border-red-500 text-red-300':'bg-green-500/20 border border-green-500 text-green-300');m.innerText=t;}
+function updateAuthUI(){const b=document.getElementById('authBtn'),s=document.getElementById('switchText'),sw=document.getElementById('switchBtn');if(authMode==='login'){b.innerText='Accedi';s.innerText='Non hai un account?';sw.innerText='Registrati';}else{b.innerText='Crea Account';s.innerText='Hai già un account?';sw.innerText='Accedi';}}
+document.getElementById('switchBtn').onclick=()=>{authMode=authMode==='login'?'register':'login';updateAuthUI();};
+document.getElementById('forgotBtn').onclick=async()=>{const e=document.getElementById('email').value;if(!e){alert('Inserisci prima la email');return;}try{await supabase.resetPassword(e);showMsg('📧 Email inviata','success');}catch(err){showMsg('❌ '+err.message);}};
 
-// ==================== AUTENTICAZIONE ====================
-function showMessage(text, type = 'error') {
-    const msg = document.getElementById('authMessage');
-    msg.classList.remove('hidden', 'bg-red-500/20', 'border-red-500', 'text-red-300', 'bg-green-500/20', 'border-green-500', 'text-green-300');
-    if (type === 'error') msg.classList.add('bg-red-500/20', 'border', 'border-red-500', 'text-red-300');
-    else msg.classList.add('bg-green-500/20', 'border', 'border-green-500', 'text-green-300');
-    msg.innerText = text;
-}
-function hideMessage() { document.getElementById('authMessage').classList.add('hidden'); }
+document.getElementById('loginForm').onsubmit=async(e)=>{e.preventDefault();const em=document.getElementById('email').value.trim(),pw=document.getElementById('password').value,b=document.getElementById('authBtn'),ot=b.innerText;b.disabled=true;b.innerText='...';try{if(authMode==='login'){await supabase.signIn(em,pw);showDash();}else{await supabase.signUp(em,pw);showMsg('✅ Account creato!','success');authMode='login';updateAuthUI();}}catch(err){showMsg('❌ '+(err.message||'Errore'));}finally{b.disabled=false;b.innerText=ot;}};
 
-function updateAuthUI() {
-    const submitBtn = document.getElementById('authSubmitBtn');
-    const switchText = document.getElementById('switchText');
-    const switchBtn = document.getElementById('switchModeBtn');
-    const resetLink = document.getElementById('resetLink');
-    const passwordField = document.getElementById('password');
-    if (authMode === 'login') {
-        submitBtn.innerText = 'Accedi'; switchText.innerText = 'Non hai un account?'; switchBtn.innerText = 'Registrati'; resetLink.style.display = 'block'; passwordField.required = true;
-    } else if (authMode === 'register') {
-        submitBtn.innerText = 'Crea Account'; switchText.innerText = 'Hai già un account?'; switchBtn.innerText = 'Accedi'; resetLink.style.display = 'none'; passwordField.required = true;
-    } else if (authMode === 'reset') {
-        submitBtn.innerText = 'Invia link'; switchText.innerText = 'Tornato in mente?'; switchBtn.innerText = 'Accedi'; resetLink.style.display = 'none'; passwordField.required = false; passwordField.value = '';
-    }
-}
-
-document.getElementById('switchModeBtn').addEventListener('click', () => { hideMessage(); authMode = authMode === 'login' ? 'register' : 'login'; updateAuthUI(); });
-document.getElementById('forgotPasswordBtn').addEventListener('click', () => { hideMessage(); authMode = 'reset'; updateAuthUI(); });
-
-document.getElementById('loginForm').addEventListener('submit', async function(e) {
-    e.preventDefault(); hideMessage();
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const submitBtn = document.getElementById('authSubmitBtn');
-    const originalText = submitBtn.innerText;
-    submitBtn.disabled = true; submitBtn.innerText = 'Elaborazione...';
-    try {
-        if (authMode === 'login') { await supabase.signIn(email, password); showDashboard(); } 
-        else if (authMode === 'register') { await supabase.signUp(email, password); showMessage('✅ Account creato!', 'success'); authMode = 'login'; updateAuthUI(); } 
-        else if (authMode === 'reset') { await supabase.resetPassword(email); showMessage('📧 Email inviata!', 'success'); authMode = 'login'; updateAuthUI(); }
-    } catch (err) {
-        let errorMsg = err.error_description || err.msg || err.message || 'Errore';
-        if (errorMsg.toLowerCase().includes('invalid login credentials')) errorMsg = 'Email o password errati.';
-        showMessage('❌ ' + errorMsg, 'error');
-    } finally { submitBtn.disabled = false; submitBtn.innerText = originalText; }
-});
-
-function showDashboard() {
-    const user = supabase.getUser();
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('dashboardScreen').classList.remove('hidden');
-    if (user && user.email) document.getElementById('userEmail').innerText = user.email;
-    loadSavedLibrary();
-}
-function logout() { supabase.signOut(); document.getElementById('dashboardScreen').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); hideMessage(); }
-if (supabase.isLoggedIn()) showDashboard(); else updateAuthUI();
+function showDash(){const u=supabase.getUser();document.getElementById('loginScreen').classList.add('hidden');document.getElementById('dashboardScreen').classList.remove('hidden');if(u?.email)document.getElementById('userEmail').innerText=u.email;loadSaved();}
+function logout(){supabase.signOut();document.getElementById('dashboardScreen').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');}
+if(supabase.isLoggedIn())showDash();else updateAuthUI();
 
 // ==================== IMPORT LIBRERIA ====================
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-['dragenter', 'dragover'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); }); });
-['dragleave', 'drop'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.remove('drag-active'); }); });
-dropZone.addEventListener('drop', (e) => { const files = e.dataTransfer.files; if (files.length) handleFile(files[0]); });
-fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+const dz=document.getElementById('dropZone'),fi=document.getElementById('fileInput');
+['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('border-aura-gold');}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('border-aura-gold');}));
+dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
+fi.onchange=e=>{if(e.target.files.length)handleFile(e.target.files[0]);};
 
-function handleFile(file) {
-    document.getElementById('dropText').innerText = `Analisi di ${file.name} in corso...`;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const content = e.target.result;
-        let tracks = [];
-        let playlists = {};
-        
-        if (file.name.endsWith('.xml')) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(content, "text/xml");
-            const trackNodes = xmlDoc.getElementsByTagName("TRACK");
-            tracks = Array.from(trackNodes).map(node => ({
-                artist: node.getAttribute("Artist") || "Unknown",
-                title: node.getAttribute("Name") || "Unknown",
-                bpm: node.getAttribute("BPM") || "?",
-                key: getCamelot(node.getAttribute("Key") || "?"),
-                energy: getEnergy(node.getAttribute("BPM"))
-            }));
-            playlists = { 'Collection': tracks };
-        } else if (file.name.endsWith('.m3u8') || file.name.endsWith('.m3u')) {
-            const lines = content.split(/\r?\n/);
-            let currentPlaylist = 'Collection';
-            let currentTitle = "";
-            let currentArtist = "";
-            playlists[currentPlaylist] = [];
-            
-            for (let line of lines) {
-                line = line.trim();
-                if (line.startsWith('#PLAYLIST:') || line.startsWith('#Playlist:')) {
-                    currentPlaylist = line.substring(10).trim();
-                    if (!playlists[currentPlaylist]) playlists[currentPlaylist] = [];
-                } else if (line.startsWith("#EXTINF:")) {
-                    const commaIndex = line.indexOf(",");
-                    if (commaIndex > -1) {
-                        const metadata = line.substring(commaIndex + 1).trim();
-                        const parts = metadata.split(' - ');
-                        if (parts.length >= 2) {
-                            currentArtist = parts[0].trim();
-                            currentTitle = parts.slice(1).join(' - ').trim();
-                        } else {
-                            currentArtist = "Unknown";
-                            currentTitle = metadata;
-                        }
-                    }
-                } else if (line && !line.startsWith("#") && currentTitle !== "") {
-                    const track = { artist: currentArtist, title: currentTitle, bpm: "?", key: "?", energy: 5, playlist: currentPlaylist };
-                    tracks.push(track);
-                    if (!playlists[currentPlaylist]) playlists[currentPlaylist] = [];
-                    playlists[currentPlaylist].push(track);
-                    currentTitle = ""; currentArtist = "";
-                }
-            }
-        } else { alert('Formato non supportato.'); return; }
-        
-        userLibrary = tracks;
-        playlistStructure = playlists;
-        document.getElementById('dropText').innerText = 'Trascina qui il file';
-        document.getElementById('resultArea').classList.remove('hidden');
-        document.getElementById('resultText').innerText = `Trovate ${tracks.length} tracce in ${Object.keys(playlists).length} playlist.`;
-        renderPlaylistTree();
-        saveLibraryToCloud();
-    };
-    reader.readAsText(file);
-}
+function handleFile(file){document.getElementById('dropText').innerText='Analisi...';const r=new FileReader();r.onload=e=>{const c=e.target.result;let tracks=[],pls={};
+if(file.name.endsWith('.xml')){const p=new DOMParser(),x=p.parseFromString(c,'text/xml');tracks=Array.from(x.getElementsByTagName('TRACK')).map(n=>({artist:n.getAttribute('Artist')||'Unknown',title:n.getAttribute('Name')||'Unknown',bpm:n.getAttribute('BPM')||'?',key:getCamelot(n.getAttribute('Key')||'?'),energy:getEnergy(n.getAttribute('BPM'))}));pls={'Collection':tracks};}
+else if(file.name.endsWith('.m3u8')||file.name.endsWith('.m3u')){const lines=c.split(/\r?\n/);let cp='Collection',ct='',ca='';pls[cp]=[];for(let l of lines){l=l.trim();if(l.startsWith('#PLAYLIST:')){cp=l.substring(10).trim();if(!pls[cp])pls[cp]=[];}else if(l.startsWith('#EXTINF:')){const ci=l.indexOf(',');if(ci>-1){const m=l.substring(ci+1).trim(),p=m.split(' - ');if(p.length>=2){ca=p[0].trim();ct=p.slice(1).join(' - ').trim();}else{ca='Unknown';ct=m;}}}else if(l&&!l.startsWith('#')&&ct!==''){const t={artist:ca,title:ct,bpm:'?',key:'?',energy:5,playlist:cp};tracks.push(t);if(!pls[cp])pls[cp]=[];pls[cp].push(t);ct='';ca='';}}}
+else{alert('Formato non supportato');return;}
+userLibrary=tracks;playlistStructure=pls;document.getElementById('dropText').innerText='Trascina qui il file';document.getElementById('resultArea').classList.remove('hidden');document.getElementById('resultText').innerText=`✅ ${tracks.length} tracce in ${Object.keys(pls).length} playlist`;renderTree();saveCloud();};r.readAsText(file);}
 
-function renderPlaylistTree() {
-    const tree = document.getElementById('playlistTree');
-    if (Object.keys(playlistStructure).length === 0) {
-        tree.innerHTML = '<p class="text-center text-slate-500 py-8">Nessuna playlist.</p>';
-        return;
-    }
-    let html = '<div class="playlist-tree">';
-    for (let [playlistName, tracks] of Object.entries(playlistStructure)) {
-        html += `<div class="playlist-folder">
-            <div class="folder-header" onclick="toggleFolder(this)">
-                <span class="folder-icon">📁</span>
-                <span class="folder-name">${playlistName}</span>
-                <span class="folder-count">${tracks.length} tracce</span>
-            </div>
-            <div class="folder-children">`;
-        tracks.forEach((track, idx) => {
-            const trackId = `${playlistName}-${idx}`;
-            html += `<div class="track-item">
-                <input type="checkbox" class="track-checkbox" data-id="${trackId}" onchange="updateSelectedCount()">
-                <div class="track-info">
-                    <div class="track-title">${track.artist} - ${track.title}</div>
-                    <div class="track-meta">${track.key} | ${track.bpm} BPM</div>
-                </div>
-            </div>`;
-        });
-        html += `</div></div>`;
-    }
-    html += '</div>';
-    tree.innerHTML = html;
-}
+function renderTree(){const t=document.getElementById('playlistTree');if(!Object.keys(playlistStructure).length){t.innerHTML='<p class="text-center text-slate-500 py-8">Nessuna playlist</p>';return;}let h='';for(let[n,tr]of Object.entries(playlistStructure)){h+=`<div class="mb-2"><div class="folder-h bg-slate-800 p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📁 ${n}</span><span class="text-xs text-slate-400">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;tr.forEach((tk,i)=>{h+=`<label class="flex items-center gap-2 p-1 hover:bg-slate-800 rounded cursor-pointer"><input type="checkbox" class="tcb" data-id="${n}-${i}" onchange="updSel()"> <span class="text-sm">${tk.artist} - ${tk.title}</span></label>`;});h+='</div></div>';}t.innerHTML=h;}
+document.getElementById('expandAllBtn').onclick=()=>document.querySelectorAll('.folder-h+div').forEach(d=>d.classList.remove('hidden'));
+document.getElementById('collapseAllBtn').onclick=()=>document.querySelectorAll('.folder-h+div').forEach(d=>d.classList.add('hidden'));
+document.getElementById('selectAllBtn').onclick=()=>{document.querySelectorAll('.tcb').forEach(c=>c.checked=true);updSel();};
+function updSel(){selectedTracks.clear();document.querySelectorAll('.tcb:checked').forEach(c=>selectedTracks.add(c.dataset.id));document.getElementById('selectedCount').innerText=selectedTracks.size;}
 
-function toggleFolder(header) {
-    const children = header.nextElementSibling;
-    const icon = header.querySelector('.folder-icon');
-    if (children.classList.contains('expanded')) {
-        children.classList.remove('expanded');
-        header.classList.remove('expanded');
-        icon.textContent = '📁';
-    } else {
-        children.classList.add('expanded');
-        header.classList.add('expanded');
-        icon.textContent = '📂';
-    }
-}
-
-function updateSelectedCount() {
-    const checkboxes = document.querySelectorAll('.track-checkbox:checked');
-    selectedTracks.clear();
-    checkboxes.forEach(cb => selectedTracks.add(cb.dataset.id));
-    document.getElementById('selectedTracksCount').innerText = selectedTracks.size;
-}
-
-document.getElementById('expandAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('.folder-children').forEach(el => el.classList.add('expanded'));
-    document.querySelectorAll('.folder-header').forEach(el => { el.classList.add('expanded'); el.querySelector('.folder-icon').textContent = '📂'; });
-});
-document.getElementById('collapseAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('.folder-children').forEach(el => el.classList.remove('expanded'));
-    document.querySelectorAll('.folder-header').forEach(el => { el.classList.remove('expanded'); el.querySelector('.folder-icon').textContent = '📁'; });
-});
-document.getElementById('selectAllPlaylistsBtn').addEventListener('click', () => {
-    document.querySelectorAll('.track-checkbox').forEach(cb => cb.checked = true);
-    updateSelectedCount();
-});
-
-// ==================== CLOUD ====================
-async function saveLibraryToCloud() {
-    if (!supabase.isLoggedIn() || userLibrary.length === 0) return;
-    try {
-        await supabase.saveLibrary(userLibrary, 'Libreria Engine DJ');
-        const n = document.createElement('div');
-        n.className = 'fixed top-20 right-4 bg-aura-gold/20 border border-aura-gold text-aura-gold px-4 py-3 rounded-lg shadow-lg z-50';
-        n.innerHTML = `<div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>Salvata nel cloud</span></div>`;
-        document.body.appendChild(n); lucide.createIcons(); setTimeout(() => n.remove(), 3000);
-    } catch (err) { console.error(err); }
-}
-
-async function loadSavedLibrary() {
-    if (!supabase.isLoggedIn()) return;
-    try {
-        const saved = await supabase.loadLibrary();
-        if (saved && saved.tracks && saved.tracks.length > 0) {
-            userLibrary = saved.tracks;
-            playlistStructure = { 'Collection': userLibrary };
-            const n = document.createElement('div');
-            n.className = 'fixed top-20 right-4 bg-green-500/20 border border-green-500 text-green-300 px-4 py-3 rounded-lg shadow-lg z-50';
-            n.innerHTML = `<div class="flex items-center gap-2"><i data-lucide="cloud" class="w-5 h-5"></i><span>Caricata: <b>${userLibrary.length} tracce</b></span></div>`;
-            document.body.appendChild(n); lucide.createIcons(); setTimeout(() => n.remove(), 4000);
-            renderPlaylistTree();
-        }
-    } catch (err) { console.error(err); }
-}
+async function saveCloud(){if(!supabase.isLoggedIn()||!userLibrary.length)return;try{await supabase.saveLibrary(userLibrary,'Libreria');}catch(e){console.error(e);}}
+async function loadSaved(){if(!supabase.isLoggedIn())return;try{const s=await supabase.loadLibrary();if(s?.tracks?.length){userLibrary=s.tracks;playlistStructure={'Collection':userLibrary};renderTree();}}catch(e){}}
 
 // ==================== TRACK MATCHER ====================
-const NOISE_WORDS = [
-    'remaster', 'remastered', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2009', '2010', '2011', '2012',
-    'official video', 'official audio', 'lyric video', 'audio', 'video',
-    'feat', 'ft', 'featuring', 'vs', 'x',
-    'remix', 'extended', 'radio edit', 'original mix', 'club mix', 'instrumental',
-    'acoustic', 'live', 'version', 'edit', 'mix', 'clean', 'explicit',
-    'from', 'soundtrack', 'album version', 'single version',
-    'hq', 'hd', '4k', 'official'
-];
+const NOISE=['remaster','remastered','2019','2020','2021','2022','2023','2024','2025','official video','official audio','feat','ft','featuring','remix','extended','radio edit','club mix','live','version','edit','mix','hq','hd'];
+function norm(t,strict=false){if(!t)return'';let n=t.toString().toLowerCase().replace(/[~"'`´^]/g,' ').replace(/\s*-\s*/g,' ').replace(/\s*[\(\)\[\]]/g,' ').replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi,' ');if(!strict)for(let w of NOISE)n=n.replace(new RegExp('\\b'+w+'\\b','gi'),' ');return n.replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim();}
+function sim(a,b){if(a===b)return 100;if(!a||!b)return 0;if(a.includes(b)||b.includes(a))return(Math.min(a.length,b.length)/Math.max(a.length,b.length))*100;const w1=a.split(' ').filter(w=>w.length>1),w2=b.split(' ').filter(w=>w.length>1);let c=0;for(let x of w1)for(let y of w2)if(x===y){c++;break;}return(c/Math.max(w1.length,w2.length))*100;}
 
-function normalizeText(text, strictMode = false) {
-    if (!text) return '';
-    let normalized = text.toString().toLowerCase();
-    normalized = normalized.replace(/[~"'`´^]/g, ' ');
-    normalized = normalized.replace(/\s*-\s*/g, ' ');
-    normalized = normalized.replace(/\s*\(\s*/g, ' ');
-    normalized = normalized.replace(/\s*\)\s*/g, ' ');
-    normalized = normalized.replace(/\s*\[\s*/g, ' ');
-    normalized = normalized.replace(/\s*\]\s*/g, ' ');
-    normalized = normalized.replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi, ' ');
-    if (!strictMode) {
-        for (let word of NOISE_WORDS) {
-            const regex = new RegExp('\\b' + word + '\\b', 'gi');
-            normalized = normalized.replace(regex, ' ');
-        }
-    }
-    normalized = normalized.replace(/[^\w\s]/g, ' ');
-    normalized = normalized.replace(/\s+/g, ' ').trim();
-    return normalized;
-}
+document.getElementById('fetchSpotifyBtn').onclick=async()=>{
+    const link=document.getElementById('spotifyLink').value.trim();
+    const ld=document.getElementById('spotifyLoading'),er=document.getElementById('spotifyError');
+    if(!link){alert('Incolla il link Spotify');return;}
+    const m=link.match(/playlist\/([a-zA-Z0-9]+)/);if(!m){alert('Link non valido');return;}
+    const pid=m[1];ld.classList.remove('hidden');er.classList.add('hidden');
+    try{
+        const tokRes=await fetch(CORS_PROXY+encodeURIComponent('https://accounts.spotify.com/api/token'),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':'Basic '+btoa(CLIENT_ID+':'+CLIENT_SECRET)},body:'grant_type=client_credentials'});
+        if(!tokRes.ok)throw new Error('Errore token Spotify');
+        const tok=await tokRes.json();
+        const trRes=await fetch(CORS_PROXY+encodeURIComponent(`https://api.spotify.com/v1/playlists/${pid}/tracks?limit=100&market=IT`),{headers:{'Authorization':'Bearer '+tok.access_token}});
+        if(!trRes.ok)throw new Error('Playlist non trovata o privata');
+        const data=await trRes.json();
+        const tracks=data.items.map(i=>{const t=i.track;if(!t)return null;return{artist:t.artists.map(a=>a.name).join(', '),title:t.name,original:t.artists.map(a=>a.name).join(', ')+' - '+t.name};}).filter(t=>t);
+        if(!tracks.length)throw new Error('Nessuna traccia');
+        lastMatched.spotifyTracks=tracks;
+        doMatch(tracks);
+    }catch(e){er.classList.remove('hidden');er.innerText='❌ '+e.message;}finally{ld.classList.add('hidden');}
+};
 
-function stringSimilarity(str1, str2) {
-    const s1 = str1;
-    const s2 = str2;
-    if (s1 === s2) return 100;
-    if (s1.length === 0 || s2.length === 0) return 0;
-    if (s1.includes(s2) || s2.includes(s1)) {
-        const shorter = Math.min(s1.length, s2.length);
-        const longer = Math.max(s1.length, s2.length);
-        return (shorter / longer) * 100;
-    }
-    const words1 = s1.split(' ').filter(w => w.length > 1);
-    const words2 = s2.split(' ').filter(w => w.length > 1);
-    let commonWords = 0;
-    for (let w1 of words1) {
-        for (let w2 of words2) {
-            if (w1 === w2) { commonWords++; break; }
-        }
-    }
-    const maxWords = Math.max(words1.length, words2.length);
-    if (maxWords === 0) return 0;
-    return (commonWords / maxWords) * 100;
-}
-
-function calculateMatchScore(spotifyTrack, libTrack) {
-    const spotifyArtist = normalizeText(spotifyTrack.artist, true);
-    const libArtist = normalizeText(libTrack.artist, true);
-    const spotifyTitle = normalizeText(spotifyTrack.title, false);
-    const libTitle = normalizeText(libTrack.title, false);
-    const artistSimilarity = stringSimilarity(spotifyArtist, libArtist);
-    const titleSimilarity = stringSimilarity(spotifyTitle, libTitle);
-    let artistWeight, titleWeight;
-    if (artistSimilarity >= 90) {
-        artistWeight = 0.80; titleWeight = 0.20;
-    } else if (artistSimilarity >= 70) {
-        artistWeight = 0.60; titleWeight = 0.40;
-    } else {
-        artistWeight = 0.50; titleWeight = 0.50;
-    }
-    const totalScore = (artistSimilarity * artistWeight) + (titleSimilarity * titleWeight);
-    return { total: totalScore, artist: artistSimilarity, title: titleSimilarity };
-}
-
-function parseSpotifyExport(content, filename) {
-    const tracks = [];
-    if (filename.endsWith('.csv')) {
-        const lines = content.split(/\r?\n/);
-        for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
-            if (cols.length >= 2 && cols[0] && cols[1]) {
-                tracks.push({ artist: cols[0], title: cols[1], original: `${cols[0]} - ${cols[1]}` });
-            }
-        }
-    } else {
-        const lines = content.split(/\r?\n/);
-        for (let line of lines) {
-            line = line.trim();
-            if (!line || line.startsWith('#')) continue;
-            const parts = line.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
-            if (parts.length < 2) continue;
-            let artist, title;
-            if (parts.length === 2) {
-                const [first, last] = parts;
-                if (first.split(' ').length <= last.split(' ').length) {
-                    artist = first; title = last;
-                } else {
-                    title = first; artist = last;
-                }
-            } else {
-                artist = parts[parts.length - 1];
-                title = parts.slice(0, -1).join(' - ');
-            }
-            if (artist && title && artist.length > 0 && title.length > 0) {
-                tracks.push({ artist: artist, title: title, original: line });
-            }
-        }
-    }
-    return tracks;
-}
-
-const matcherDropZone = document.getElementById('matcherDropZone');
-const matcherFileInput = document.getElementById('matcherFileInput');
-['dragenter', 'dragover'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.add('drag-active'); }); });
-['dragleave', 'drop'].forEach(eventName => { matcherDropZone.addEventListener(eventName, (e) => { e.preventDefault(); matcherDropZone.classList.remove('drag-active'); }); });
-matcherDropZone.addEventListener('drop', (e) => { const files = e.dataTransfer.files; if (files.length) handleMatcherFile(files[0]); });
-matcherFileInput.addEventListener('change', (e) => { if (e.target.files.length) handleMatcherFile(e.target.files[0]); });
-
-function handleMatcherFile(file) {
-    document.getElementById('matcherDropText').innerText = `Analisi di ${file.name}...`;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const content = e.target.result;
-        const spotifyPlaylist = parseSpotifyExport(content, file.name);
-        if (spotifyPlaylist.length === 0) { 
-            alert('Nessuna traccia trovata. Controlla il formato del file.'); 
-            document.getElementById('matcherDropText').innerText = 'Trascina qui il file'; 
-            return; 
-        }
-        performMatching(spotifyPlaylist);
-    };
-    reader.readAsText(file);
-}
-
-// ==================== FETCH DA SPOTIFY (CON PROXY CORS) ====================
-document.getElementById('fetchSpotifyBtn').addEventListener('click', async () => {
-    const link = document.getElementById('spotifyLinkInput').value.trim();
-    const loading = document.getElementById('spotifyLoading');
-    const errorDiv = document.getElementById('spotifyError');
-    
-    if (!link) {
-        alert('Incolla prima il link della playlist Spotify!');
-        return;
-    }
-    
-    const match = link.match(/playlist\/([a-zA-Z0-9]+)/);
-    if (!match) {
-        alert('Link non valido. Deve essere tipo: https://open.spotify.com/playlist/XXXXX');
-        return;
-    }
-    const playlistId = match[1];
-    
-    loading.classList.remove('hidden');
-    errorDiv.classList.add('hidden');
-    
-    try {
-        const corsProxy = 'https://corsproxy.io/?';
-        const spotifyTokenUrl = 'https://accounts.spotify.com/api/token';
-        const spotifyApiUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&market=IT`;
-        
-        // ⚠️ SOSTITUISCI IL TUO CLIENT SECRET QUI SOTTO
-        const clientId = '1308767b4c5946dab3c421a3b58bc8b4';
-        const clientSecret = '5c0fd128f6e4475f97455bc22b0743d0';
-        
-        const tokenResponse = await fetch(corsProxy + encodeURIComponent(spotifyTokenUrl), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': 'Basic ' + btoa(clientId + ':' + clientSecret)
-            },
-            body: 'grant_type=client_credentials'
-        });
-        
-        if (!tokenResponse.ok) {
-            throw new Error('Errore ottenendo token Spotify');
-        }
-        
-        const tokenData = await tokenResponse.json();
-        const accessToken = tokenData.access_token;
-        
-        const tracksResponse = await fetch(corsProxy + encodeURIComponent(spotifyApiUrl), {
-            headers: { 'Authorization': 'Bearer ' + accessToken }
-        });
-        
-        if (!tracksResponse.ok) {
-            const errData = await tracksResponse.json();
-            if (errData.error?.message?.includes('not found')) {
-                throw new Error('Playlist non trovata. Assicurati che sia PUBBLICA.');
-            }
-            throw new Error('Errore API: ' + errData.error?.message);
-        }
-        
-        const tracksData = await tracksResponse.json();
-        
-        const tracks = tracksData.items.map(item => {
-            const track = item.track;
-            if (!track) return null;
-            return {
-                artist: track.artists.map(a => a.name).join(', '),
-                title: track.name,
-                original: `${track.artists.map(a => a.name).join(', ')} - ${track.name}`
-            };
-        }).filter(t => t !== null);
-        
-        if (tracks.length === 0) {
-            throw new Error('Nessuna traccia trovata');
-        }
-        
-        const n = document.createElement('div');
-        n.className = 'fixed top-20 right-4 bg-green-500/20 border border-green-500 text-green-300 px-4 py-3 rounded-lg shadow-lg z-50';
-        n.innerHTML = `<div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>Caricate ${tracks.length} tracce da Spotify</span></div>`;
-        document.body.appendChild(n); lucide.createIcons(); setTimeout(() => n.remove(), 3000);
-        
-        performMatching(tracks);
-        
-    } catch (err) {
-        errorDiv.classList.remove('hidden');
-        errorDiv.innerHTML = `<p class="font-semibold">❌ ${err.message}</p><p class="text-xs mt-1">Assicurati che la playlist sia PUBBLICA su Spotify.</p>`;
-    } finally {
-        loading.classList.add('hidden');
-    }
-});
-
-function performMatching(spotifyPlaylist) {
-    if (userLibrary.length === 0) { 
-        alert('⚠️ Prima carica la tua libreria Engine DJ nella sezione 1!'); 
-        return; 
-    }
-    
-    const matchedTracks = { found: [], uncertain: [], missing: [] };
-    
-    for (let sp of spotifyPlaylist) {
-        let bestMatch = null;
-        let bestScore = { total: 0, artist: 0, title: 0 };
-        
-        for (let lib of userLibrary) {
-            const score = calculateMatchScore(sp, lib);
-            if (score.total > bestScore.total) {
-                bestScore = score;
-                bestMatch = lib;
-            }
-        }
-        
-        if (bestScore.artist >= 85) {
-            matchedTracks.found.push({ ...sp, match: bestMatch, score: bestScore });
-        } else if (bestScore.artist >= 70 && bestScore.total >= 50) {
-            matchedTracks.uncertain.push({ ...sp, match: bestMatch, score: bestScore });
-        } else {
-            matchedTracks.missing.push(sp);
-        }
-    }
-    
-    lastMatchedTracks = matchedTracks;
-    renderMatcherResults(matchedTracks, spotifyPlaylist.length);
-}
-
-function renderMatcherResults(matchedTracks, total) {
-    document.getElementById('matcherDropText').innerText = 'Trascina qui il file';
+function doMatch(spTracks){
+    if(!userLibrary.length){alert('⚠️ Carica prima la libreria!');return;}
+    const found=[],missing=[];
+    for(let sp of spTracks){let best=null,bs={t:0,a:0};for(let lib of userLibrary){const as=sim(norm(sp.artist,true),norm(lib.artist,true)),ts=sim(norm(sp.title,false),norm(lib.title,false)),tot=as>=90?as*0.8+ts*0.2:as*0.6+ts*0.4;if(tot>bs.t){bs={t:tot,a:as};best=lib;}}
+    if(bs.a>=85)found.push({...sp,match:best,score:bs});else missing.push(sp);}
+    lastMatched={found,missing,spotifyTracks:spTracks};
     document.getElementById('matcherResults').classList.remove('hidden');
-    document.getElementById('matcherTotal').innerText = total;
-    document.getElementById('matcherFound').innerText = matchedTracks.found.length;
-    document.getElementById('matcherUncertain').innerText = matchedTracks.uncertain.length;
-    document.getElementById('matcherMissing').innerText = matchedTracks.missing.length;
-    document.getElementById('foundCount').innerText = matchedTracks.found.length;
-    document.getElementById('uncertainCount').innerText = matchedTracks.uncertain.length;
-    document.getElementById('missingCount').innerText = matchedTracks.missing.length;
-    renderFoundList(matchedTracks.found); 
-    renderUncertainList(matchedTracks.uncertain); 
-    renderMissingList(matchedTracks.missing);
+    document.getElementById('mTotal').innerText=spTracks.length;
+    document.getElementById('mFound').innerText=found.length;
+    document.getElementById('mMissing').innerText=missing.length;
+    renderFound();renderMissing();
 }
 
-function renderFoundList(found) {
-    const list = document.getElementById('foundList');
-    if (found.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match trovato.</p>'; return; }
-    list.innerHTML = found.map(t => `<div class="matcher-track found"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">✅ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Titolo: ${Math.round(t.score.title)}%)</div></div></div>`).join('');
-    lucide.createIcons();
-}
+function renderFound(){const l=document.getElementById('foundList');if(!lastMatched.found.length){l.innerHTML='<p class="text-center text-slate-500 py-4">Nessun match</p>';return;}l.innerHTML=lastMatched.found.map(t=>`<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');lucide.createIcons();}
+function renderMissing(){const l=document.getElementById('missingList');if(!lastMatched.missing.length){l.innerHTML='<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>';return;}l.innerHTML=lastMatched.missing.map(t=>`<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded">Spotify</a></div>`).join('');lucide.createIcons();}
 
-function renderUncertainList(uncertain) {
-    const list = document.getElementById('uncertainList');
-    if (uncertain.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">Nessun match incerto.</p>'; return; }
-    list.innerHTML = uncertain.map(t => `<div class="matcher-track" style="border-left: 3px solid #EAB308;"><i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">⚠️ ${t.match.artist} - ${t.match.title} (Autore: ${Math.round(t.score.artist)}%, Titolo: ${Math.round(t.score.title)}%)</div></div></div>`).join('');
-    lucide.createIcons();
-}
+document.getElementById('tabFound').onclick=()=>{document.getElementById('foundList').classList.remove('hidden');document.getElementById('missingList').classList.add('hidden');document.getElementById('tabFound').classList.add('active');document.getElementById('tabMissing').classList.remove('active');};
+document.getElementById('tabMissing').onclick=()=>{document.getElementById('foundList').classList.add('hidden');document.getElementById('missingList').classList.remove('hidden');document.getElementById('tabMissing').classList.add('active');document.getElementById('tabFound').classList.remove('active');};
 
-function renderMissingList(missing) {
-    const list = document.getElementById('missingList');
-    if (missing.length === 0) { list.innerHTML = '<p class="text-center text-slate-500 py-8">🎉 Tutte presenti!</p>'; return; }
-    list.innerHTML = missing.map(t => `<div class="matcher-track missing"><i data-lucide="alert-circle" class="w-5 h-5 text-red-400"></i><div class="matcher-track-info"><div class="matcher-track-title">${t.original}</div><div class="matcher-track-artist">❌ Mancante</div></div><button class="matcher-search-btn spotify" onclick="window.open('https://open.spotify.com/search/${encodeURIComponent(t.original)}','_blank')">Spotify</button><button class="matcher-search-btn tidal" onclick="window.open('https://tidal.com/search?q=${encodeURIComponent(t.original)}','_blank')">Tidal</button></div>`).join('');
-    lucide.createIcons();
-}
+document.getElementById('exportMissingSpotifyBtn').onclick=()=>{
+    if(!lastMatched.missing.length){alert('Nessuna traccia mancante');return;}
+    const q=lastMatched.missing.map(t=>encodeURIComponent(t.original)).join(',');
+    const url=`https://open.spotify.com/search/${q}`;
+    window.open(url,'_blank');
+    alert('🎵 Spotify aperto con le tracce mancanti!');
+};
 
-document.getElementById('showFoundBtn').addEventListener('click', () => {
-    document.getElementById('foundList').classList.remove('hidden'); document.getElementById('uncertainList').classList.add('hidden'); document.getElementById('missingList').classList.add('hidden');
-    document.getElementById('showFoundBtn').classList.add('active'); document.getElementById('showUncertainBtn').classList.remove('active'); document.getElementById('showMissingBtn').classList.remove('active');
-});
-document.getElementById('showUncertainBtn').addEventListener('click', () => {
-    document.getElementById('foundList').classList.add('hidden'); document.getElementById('uncertainList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden');
-    document.getElementById('showUncertainBtn').classList.add('active'); document.getElementById('showFoundBtn').classList.remove('active'); document.getElementById('showMissingBtn').classList.remove('active');
-});
-document.getElementById('showMissingBtn').addEventListener('click', () => {
-    document.getElementById('foundList').classList.add('hidden'); document.getElementById('uncertainList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden');
-    document.getElementById('showMissingBtn').classList.add('active'); document.getElementById('showFoundBtn').classList.remove('active'); document.getElementById('showUncertainBtn').classList.remove('active');
-});
+document.getElementById('exportPresentM3U8Btn').onclick=()=>{
+    if(!lastMatched.found.length){alert('Nessuna traccia presente');return;}
+    let m='#EXTM3U\n# PLAYLIST: AURA - Tracce Presenti\n\n';
+    lastMatched.found.forEach(t=>{m+=`#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`;});
+    dl(m,'AURA_Presenti');
+};
 
-document.getElementById('exportMissingBtn').addEventListener('click', () => {
-    if (lastMatchedTracks.missing.length === 0) { alert('Nessuna traccia mancante.'); return; }
-    let m3u8 = '#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n';
-    lastMatchedTracks.missing.forEach(t => {
-        m3u8 += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n# TIDAL: https://tidal.com/search?q=${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`;
-    });
-    downloadM3U8(m3u8, 'AURA_Mancanti');
-});
+document.getElementById('exportMissingM3U8Btn').onclick=()=>{
+    if(!lastMatched.missing.length){alert('Nessuna traccia mancante');return;}
+    let m='#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n\n';
+    lastMatched.missing.forEach(t=>{m+=`#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`;});
+    dl(m,'AURA_Mancanti');
+};
 
-function downloadM3U8(content, filename) {
-    const blob = new Blob([content], { type: 'audio/x-mpegurl' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${filename}_${new Date().toISOString().split('T')[0]}.m3u8`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-}
+function dl(c,f){const b=new Blob([c],{type:'audio/x-mpegurl'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=f+'_'+new Date().toISOString().split('T')[0]+'.m3u8';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);}
 
-// ==================== GLOBAL CHARTS (iTunes API) ====================
-document.getElementById('loadChartsBtn').addEventListener('click', async () => {
-    const countryId = document.getElementById('countrySelect').value;
-    const loading = document.getElementById('chartsLoading');
-    const list = document.getElementById('chartsList');
-    const error = document.getElementById('chartsError');
-    const actions = document.getElementById('chartsActions');
-    
-    loading.classList.remove('hidden'); 
-    list.innerHTML = ''; 
-    error.classList.add('hidden');
-    actions.classList.add('hidden');
-    
-    try {
-        const url = `https://itunes.apple.com/${countryId}/rss/topsongs/limit=50/json`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Errore: ${response.status}`);
-        const data = await response.json();
-        const entries = data.feed?.entry || [];
-        if (entries.length === 0) throw new Error('Nessuna traccia trovata');
-        currentCharts = entries.map((entry, idx) => {
-            const artist = entry['im:artist']?.label || entry['im:artist'] || 'Unknown';
-            const title = entry.title?.label || entry.title || 'Unknown';
-            const cover = entry['im:image']?.[2]?.label || entry['im:image']?.[1]?.label || entry['im:image']?.[0]?.label || '';
-            return {
-                rank: idx + 1, title: title, artist: artist, cover: cover,
-                tidalQuery: `${artist} ${title}`.replace(/[^a-zA-Z0-9\s]/g, '')
-            };
-        });
-        list.innerHTML = currentCharts.map(t => `
-            <div class="chart-track">
-                <span class="chart-rank">#${t.rank}</span>
-                <img src="${t.cover}" class="chart-cover" onerror="this.style.display='none'">
-                <div class="chart-info"><div class="chart-title">${t.title}</div><div class="chart-artist">${t.artist}</div></div>
-            </div>
-        `).join('');
-        actions.classList.remove('hidden');
-    } catch (err) {
-        error.classList.remove('hidden');
-        error.innerHTML = `<div class="text-center py-8"><i data-lucide="alert-circle" class="w-10 h-10 mx-auto mb-2 text-red-400"></i><p class="font-semibold text-red-400">Impossibile caricare</p><p class="text-sm text-slate-400 mt-2">${err.message}</p></div>`;
-        lucide.createIcons();
-    } finally { loading.classList.add('hidden'); }
-});
-
-document.getElementById('exportM3U8Btn').addEventListener('click', () => {
-    if (currentCharts.length === 0) return;
-    let m3u8 = '#EXTM3U\n# PLAYLIST: AURA - Global Charts\n';
-    currentCharts.forEach(t => {
-        m3u8 += `#EXTINF:210,${t.artist} - ${t.title}\n# TIDAL: https://tidal.com/search?q=${encodeURIComponent(t.tidalQuery)}\n${t.artist} - ${t.title}.mp3\n\n`;
-    });
-    downloadM3U8(m3u8, 'AURA_Charts');
-});
+// ==================== GLOBAL CHARTS ====================
+document.getElementById('loadChartsBtn').onclick=async()=>{
+    const c=document.getElementById('countrySelect').value,l=document.getElementById('chartsList'),ca=document.getElementById('chartsActions');
+    l.innerHTML='<p class="text-center text-slate-400 py-4">Caricamento...</p>';ca.classList.add('hidden');
+    try{const r=await fetch(`https://itunes.apple.com/${c}/rss/topsongs/limit=50/json`);if(!r.ok)throw new Error('Errore');const d=await r.json(),e=d.feed?.entry||[];if(!e.length)throw new Error('Nessuna traccia');
+    currentCharts=e.map((x,i)=>({rank:i+1,title:x.title?.label||'Unknown',artist:x['im:artist']?.label||'Unknown',cover:x['im:image']?.[2]?.label||''}));
+    l.innerHTML=currentCharts.map(t=>`<div class="bg-slate-900/50 border border-slate-700 rounded p-2 flex items-center gap-2"><span class="text-aura-gold font-bold w-8">#${t.rank}</span><img src="${t.cover}" class="w-10 h-10 rounded"><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.title}</div><div class="text-xs text-slate-400">${t.artist}</div></div></div>`).join('');ca.classList.remove('hidden');}
+    catch(e){l.innerHTML=`<p class="text-center text-red-400 py-4">❌ ${e.message}</p>`;}
+};
+document.getElementById('exportChartsBtn').onclick=()=>{if(!currentCharts.length)return;let m='#EXTM3U\n# PLAYLIST: AURA - Global Charts\n\n';currentCharts.forEach(t=>{m+=`#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`;});dl(m,'AURA_Charts');};

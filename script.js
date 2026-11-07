@@ -1,16 +1,20 @@
 (function() {
   'use strict';
+
   function init() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
-    let authMode = 'login', userLibrary = [], playlistStructure = {}, selectedTracks = new Set();
+
+    let authMode = 'login';
+    let userLibrary = [];
+    let playlistStructure = {};
+    let selectedTracks = new Set();
     let lastMatched = { found: [], missing: [], spotifyTracks: [] };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
-    // Controlla se ci sono token nell'URL (ritorno da autorizzazione Spotify)
+    // Token Spotify da URL
     const urlParams = new URLSearchParams(window.location.search);
     const accessToken = urlParams.get('spotify_access');
     const refreshToken = urlParams.get('spotify_refresh');
-    
     if (accessToken && refreshToken) {
       localStorage.setItem('spotify_access_token', accessToken);
       localStorage.setItem('spotify_refresh_token', refreshToken);
@@ -19,36 +23,72 @@
     }
 
     function showMsg(t, type) {
-      const m = document.getElementById('authMessage'); if (!m) return;
+      const m = document.getElementById('authMessage');
+      if (!m) return;
       m.classList.remove('hidden');
-      m.className = type === 'error' ? 'mb-4 p-3 rounded-lg text-sm bg-red-500/20 border border-red-500 text-red-300' : 'mb-4 p-3 rounded-lg text-sm bg-green-500/20 border border-green-500 text-green-300';
+      m.className = type === 'error'
+        ? 'mb-4 p-3 rounded-lg text-sm bg-red-500/20 border border-red-500 text-red-300'
+        : 'mb-4 p-3 rounded-lg text-sm bg-green-500/20 border border-green-500 text-green-300';
       m.innerText = t;
     }
 
     function updateAuthUI() {
-      const b = document.getElementById('authBtn'), s = document.getElementById('switchText'), sw = document.getElementById('switchBtn');
+      const b = document.getElementById('authBtn');
+      const s = document.getElementById('switchText');
+      const sw = document.getElementById('switchBtn');
       if (!b) return;
-      if (authMode === 'login') { b.innerText = 'Accedi'; s.innerText = 'Non hai un account?'; sw.innerText = 'Registrati'; }
-      else { b.innerText = 'Crea Account'; s.innerText = 'Hai già un account?'; sw.innerText = 'Accedi'; }
+      if (authMode === 'login') {
+        b.innerText = 'Accedi';
+        s.innerText = 'Non hai un account?';
+        sw.innerText = 'Registrati';
+      } else {
+        b.innerText = 'Crea Account';
+        s.innerText = 'Hai già un account?';
+        sw.innerText = 'Accedi';
+      }
     }
 
-    document.getElementById('authBtn').addEventListener('click', async function(e) {
-      e.preventDefault();
-      const em = document.getElementById('email').value.trim(), pw = document.getElementById('password').value;
-      const b = document.getElementById('authBtn'), oldText = b.innerText;
-      if (!em || !pw) { showMsg('❌ Inserisci email e password', 'error'); return; }
-      b.disabled = true; b.innerText = '...';
-      try {
-        if (authMode === 'login') { await supabase.signIn(em, pw); showDash(); }
-        else { await supabase.signUp(em, pw); showMsg('✅ Account creato! Ora clicca Accedi', 'success'); authMode = 'login'; updateAuthUI(); }
-      } catch (err) { showMsg('❌ ' + (err.message || 'Errore'), 'error'); }
-      finally { b.disabled = false; b.innerText = oldText; }
-    });
+    // LOGIN / REGISTER
+    const authBtn = document.getElementById('authBtn');
+    if (authBtn) {
+      authBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const em = document.getElementById('email').value.trim();
+        const pw = document.getElementById('password').value;
+        const b = document.getElementById('authBtn');
+        const oldText = b.innerText;
+        if (!em || !pw) { showMsg('❌ Inserisci email e password', 'error'); return; }
+        b.disabled = true;
+        b.innerText = '...';
+        try {
+          if (authMode === 'login') {
+            await supabase.signIn(em, pw);
+            showDash();
+          } else {
+            await supabase.signUp(em, pw);
+            showMsg('✅ Account creato! Ora clicca Accedi', 'success');
+            authMode = 'login';
+            updateAuthUI();
+          }
+        } catch (err) {
+          showMsg('❌ ' + (err.message || 'Errore'), 'error');
+        } finally {
+          b.disabled = false;
+          b.innerText = oldText;
+        }
+      });
+    }
 
-    document.getElementById('switchBtn').addEventListener('click', function(e) {
-      e.preventDefault(); authMode = authMode === 'login' ? 'register' : 'login'; updateAuthUI();
-      const m = document.getElementById('authMessage'); if (m) m.classList.add('hidden');
-    });
+    const switchBtn = document.getElementById('switchBtn');
+    if (switchBtn) {
+      switchBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        authMode = authMode === 'login' ? 'register' : 'login';
+        updateAuthUI();
+        const m = document.getElementById('authMessage');
+        if (m) m.classList.add('hidden');
+      });
+    }
 
     function showDash() {
       const u = supabase.getUser();
@@ -62,16 +102,21 @@
       supabase.signOut();
       document.getElementById('dashboardScreen').classList.add('hidden');
       document.getElementById('loginScreen').classList.remove('hidden');
-      document.getElementById('email').value = ''; document.getElementById('password').value = '';
+      document.getElementById('email').value = '';
+      document.getElementById('password').value = '';
     };
 
     if (supabase.isLoggedIn()) showDash(); else updateAuthUI();
 
-    const dz = document.getElementById('dropZone'), fi = document.getElementById('fileInput');
-    ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('border-aura-gold'); }));
-    ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('border-aura-gold'); }));
-    dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
-    fi.onchange = e => { if (e.target.files.length) handleFile(e.target.files[0]); };
+    // LIBRERIA
+    const dz = document.getElementById('dropZone');
+    const fi = document.getElementById('fileInput');
+    if (dz && fi) {
+      ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('border-aura-gold'); }));
+      ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('border-aura-gold'); }));
+      dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+      fi.onchange = e => { if (e.target.files.length) handleFile(e.target.files[0]); };
+    }
 
     function handleFile(file) {
       document.getElementById('dropText').innerText = 'Analisi...';
@@ -80,7 +125,13 @@
         const c = e.target.result; let tracks = [], pls = {};
         if (file.name.endsWith('.xml')) {
           const x = new DOMParser().parseFromString(c, 'text/xml');
-          tracks = Array.from(x.getElementsByTagName('TRACK')).map(n => ({ artist: n.getAttribute('Artist')||'Unknown', title: n.getAttribute('Name')||'Unknown', bpm: n.getAttribute('BPM')||'?', key: '?', energy: 5 }));
+          tracks = Array.from(x.getElementsByTagName('TRACK')).map(n => ({
+            artist: n.getAttribute('Artist')||'Unknown',
+            title: n.getAttribute('Name')||'Unknown',
+            bpm: n.getAttribute('BPM')||'?',
+            key: '?',
+            energy: 5
+          }));
           pls = { 'Collection': tracks };
         } else if (file.name.endsWith('.m3u8') || file.name.endsWith('.m3u')) {
           const lines = c.split(/\r?\n/); let cp = 'Collection', ct = '', ca = ''; pls[cp] = [];
@@ -132,6 +183,7 @@
       } catch(e){}
     }
 
+    // TRACK MATCHER
     function norm(t) { if (!t) return ''; return t.toString().toLowerCase().replace(/[~"'`´^\(\)\[\]]/g, ' ').replace(/\s*-\s*/g, ' ').replace(/\s*(feat\.?|ft\.?|featuring|vs\.?| x )\s+[^,;]+/gi, ' ').replace(/\b(remaster|remastered|2019|2020|2021|2022|2023|2024|2025|official|video|audio|remix|extended|radio|edit|club|mix|live|version|hq|hd)\b/gi, ' ').replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim(); }
     function sim(a, b) {
       if (a === b) return 100; if (!a || !b) return 0;
@@ -141,34 +193,25 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // Ottieni o refresha il token
     async function getValidToken() {
       let accessToken = localStorage.getItem('spotify_access_token');
       let refreshToken = localStorage.getItem('spotify_refresh_token');
-      
       if (!accessToken || !refreshToken) return null;
-      
-      // Prova a usare il token corrente
       const testRes = await fetch(WORKER_URL + '/playlist?id=test', {
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
-      
       if (testRes.status === 401) {
-        // Token scaduto, usa refresh token
         const refreshRes = await fetch(WORKER_URL + '/refresh?refresh=' + refreshToken);
         const refreshData = await refreshRes.json();
-        
         if (refreshData.access_token) {
           localStorage.setItem('spotify_access_token', refreshData.access_token);
           return refreshData.access_token;
         }
         return null;
       }
-      
       return accessToken;
     }
 
-    // Autorizza Spotify
     document.getElementById('authSpotifyBtn').onclick = function() {
       window.location.href = WORKER_URL + '/auth';
     };
@@ -180,36 +223,28 @@
       const m = link.match(/playlist\/([a-zA-Z0-9]+)/);
       if (!m) { alert('Link non valido'); return; }
       const pid = m[1];
-      
       ld.classList.remove('hidden'); er.classList.add('hidden');
-      
       try {
         const token = await getValidToken();
-        
         if (!token) {
           er.classList.remove('hidden');
           er.innerHTML = '❌ Devi prima autorizzare Spotify. Clicca "🔗 Autorizza Spotify" qui sopra.';
           ld.classList.add('hidden');
           return;
         }
-        
         const response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
           headers: { 'Authorization': 'Bearer ' + token }
         });
-        
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error('HTTP ' + response.status + ' - ' + errorText);
         }
-        
         const data = await response.json();
         if (data.error) throw new Error(data.error.message || 'Errore Spotify');
-        
         const tracks = data.items.map(i => {
           const t = i.track; if (!t) return null;
           return { artist: t.artists.map(a => a.name).join(', '), title: t.name, original: t.artists.map(a => a.name).join(', ') + ' - ' + t.name };
         }).filter(t => t);
-        
         if (!tracks.length) throw new Error('Nessuna traccia');
         lastMatched.spotifyTracks = tracks; doMatch(tracks);
       } catch (e) {
@@ -219,10 +254,12 @@
     };
 
     const mdz = document.getElementById('matcherDropZone'), mfi = document.getElementById('matcherFileInput');
-    ['dragenter','dragover'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.add('border-aura-gold'); }));
-    ['dragleave','drop'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.remove('border-aura-gold'); }));
-    mdz.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleMatcherFile(e.dataTransfer.files[0]); });
-    mfi.onchange = e => { if (e.target.files.length) handleMatcherFile(e.target.files[0]); };
+    if (mdz && mfi) {
+      ['dragenter','dragover'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.add('border-aura-gold'); }));
+      ['dragleave','drop'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.remove('border-aura-gold'); }));
+      mdz.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleMatcherFile(e.dataTransfer.files[0]); });
+      mfi.onchange = e => { if (e.target.files.length) handleMatcherFile(e.target.files[0]); };
+    }
 
     function handleMatcherFile(file) {
       document.getElementById('matcherDropText').innerText = 'Analisi...';
@@ -279,4 +316,51 @@
 
     function renderFound() {
       const l = document.getElementById('foundList'); if (!l) return;
-      if (!lastMatched.found.length) { l.innerHTML = '<
+      if (!lastMatched.found.length) { l.innerHTML = '<p class="text-center text-slate-500 py-4">Nessun match</p>'; return; }
+      l.innerHTML = lastMatched.found.map(t => `<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function renderMissing() {
+      const l = document.getElementById('missingList'); if (!l) return;
+      if (!lastMatched.missing.length) { l.innerHTML = '<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>'; return; }
+      l.innerHTML = lastMatched.missing.map(t => `<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded text-white">🔍</a></div>`).join('');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    document.getElementById('tabFound').onclick = () => { document.getElementById('foundList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden'); document.getElementById('tabFound').classList.add('active'); document.getElementById('tabMissing').classList.remove('active'); };
+    document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
+
+    document.getElementById('exportPresentM3U8Btn').onclick = () => {
+      if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
+      let m = '#EXTM3U\n# PLAYLIST: AURA - Tracce Presenti\n\n';
+      lastMatched.found.forEach(t => { m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; });
+      dl(m, 'AURA_Presenti');
+    };
+
+    document.getElementById('exportMissingM3U8Btn').onclick = () => {
+      if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
+      let m = '#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n\n';
+      lastMatched.missing.forEach(t => { m += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`; });
+      dl(m, 'AURA_Mancanti');
+    };
+
+    document.getElementById('exportMissingSpotifyBtn').onclick = () => {
+      if (!lastMatched.missing.length) return;
+      window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
+    };
+
+    document.getElementById('createSpotifyPlaylistBtn').onclick = () => {
+      if (!lastMatched.missing.length) return;
+      window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
+    };
+
+    function dl(c, f) {
+      const b = new Blob([c], { type: 'audio/x-mpegurl' }), u = URL.createObjectURL(b), a = document.createElement('a');
+      a.href = u; a.download = f + '_' + new Date().toISOString().split('T')[0] + '.m3u8';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();

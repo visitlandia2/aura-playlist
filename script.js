@@ -144,7 +144,7 @@
       let h = '';
       for (let n in playlistStructure) {
         const tr = playlistStructure[n];
-        h += `<div class="mb-2"><div class="folder-h bg-slate-800 p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📁 ${n}</span><span class="text-xs text-slate-400">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;
+        h += `<div class="mb-2"><div class="folder-h bg-slate-800 p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span> ${n}</span><span class="text-xs text-slate-400">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;
         tr.forEach((tk, i) => { h += `<label class="flex items-center gap-2 p-1 hover:bg-slate-800 rounded cursor-pointer"><input type="checkbox" class="tcb" data-id="${n}-${i}" onchange="updSel()"> <span class="text-sm">${tk.artist} - ${tk.title}</span></label>`; });
         h += '</div></div>';
       }
@@ -179,7 +179,7 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // LETTURA SEMPLICE PLAYLIST SPOTIFY - NESSUNA AUTH
+    // LETTURA PLAYLIST SPOTIFY - API PUBBLICA
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -217,7 +217,7 @@
         doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}<br><span class="text-xs text-slate-400">Assicurati che la playlist sia PUBBLICA su Spotify.</span>`;
+        er.innerHTML = `❌ ${e.message}<br><span class="text-xs text-slate-400">Assicurati che la playlist sia PUBBLICA.</span>`;
       } finally { 
         ld.classList.add('hidden'); 
       }

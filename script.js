@@ -94,13 +94,19 @@
       document.getElementById('password').value = '';
     };
 
-    if (supabase.isLoggedIn()) showDash(); else updateAuthUI();
+    // AUTO-LOGIN se sessione valida
+    if (supabase.isLoggedIn()) {
+      showDash();
+    } else {
+      updateAuthUI();
+    }
 
+    // LIBRERIA
     const dz = document.getElementById('dropZone');
     const fi = document.getElementById('fileInput');
     if (dz && fi) {
-      ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('border-aura-gold'); }));
-      ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('border-aura-gold'); }));
+      ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('border-purple-500'); }));
+      ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('border-purple-500'); }));
       dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
       fi.onchange = e => { if (e.target.files.length) handleFile(e.target.files[0]); };
     }
@@ -128,9 +134,9 @@
             else if (l.startsWith('#EXTINF:')) { const ci = l.indexOf(','); if (ci > -1) { const p = l.substring(ci + 1).trim().split(' - '); ca = p.length >= 2 ? p[0].trim() : 'Unknown'; ct = p.length >= 2 ? p.slice(1).join(' - ').trim() : p[0].trim(); } }
             else if (l && !l.startsWith('#') && ct !== '') { const t = { artist: ca, title: ct, bpm: '?', key: '?', energy: 5, playlist: cp }; tracks.push(t); if (!pls[cp]) pls[cp] = []; pls[cp].push(t); ct = ''; ca = ''; }
           }
-        } else { alert('Formato non supportato'); return; }
+        } else { alert('Formato non supportato. Usa .m3u8 o .xml'); return; }
         userLibrary = tracks; playlistStructure = pls;
-        document.getElementById('dropText').innerText = 'Trascina qui il file';
+        document.getElementById('dropText').innerText = 'Trascina qui il file .m3u8 o .xml';
         document.getElementById('resultArea').classList.remove('hidden');
         document.getElementById('resultText').innerText = `✅ ${tracks.length} tracce in ${Object.keys(pls).length} playlist`;
         renderTree(); saveCloud();
@@ -140,12 +146,12 @@
 
     function renderTree() {
       const t = document.getElementById('playlistTree'); if (!t) return;
-      if (!Object.keys(playlistStructure).length) { t.innerHTML = '<p class="text-center text-slate-500 py-8">Nessuna playlist</p>'; return; }
+      if (!Object.keys(playlistStructure).length) { t.innerHTML = '<p class="text-center text-dj-muted py-8">Nessuna playlist</p>'; return; }
       let h = '';
       for (let n in playlistStructure) {
         const tr = playlistStructure[n];
-        h += `<div class="mb-2"><div class="folder-h bg-slate-800 p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📁 ${n}</span><span class="text-xs text-slate-400">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;
-        tr.forEach((tk, i) => { h += `<label class="flex items-center gap-2 p-1 hover:bg-slate-800 rounded cursor-pointer"><input type="checkbox" class="tcb" data-id="${n}-${i}" onchange="updSel()"> <span class="text-sm">${tk.artist} - ${tk.title}</span></label>`; });
+        h += `<div class="mb-2"><div class="folder-h bg-dj-bg p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📁 ${n}</span><span class="text-xs text-dj-muted">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;
+        tr.forEach((tk, i) => { h += `<label class="flex items-center gap-2 p-1 hover:bg-dj-card rounded cursor-pointer"><input type="checkbox" class="tcb" data-id="${n}-${i}" onchange="updSel()"> <span class="text-sm">${tk.artist} - ${tk.title}</span></label>`; });
         h += '</div></div>';
       }
       t.innerHTML = h;
@@ -179,17 +185,27 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // LETTURA PLAYLIST SPOTIFY
+    // SPOTIFY: Player + lettura
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
-      const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
+      const ld = document.getElementById('spotifyLoading');
+      const er = document.getElementById('spotifyError');
+      const ok = document.getElementById('spotifySuccess');
+      const playerContainer = document.getElementById('spotifyPlayerContainer');
+      const player = document.getElementById('spotifyPlayer');
+      
       if (!link) { alert('Incolla il link Spotify'); return; }
       const m = link.match(/playlist\/([a-zA-Z0-9]+)/);
       if (!m) { alert('Link non valido'); return; }
       const pid = m[1];
       
+      // Mostra player Spotify (funziona sempre)
+      player.src = `https://open.spotify.com/embed/playlist/${pid}?utm_source=generator&theme=0`;
+      playerContainer.classList.remove('hidden');
+      
       ld.classList.remove('hidden'); 
       er.classList.add('hidden');
+      ok.classList.add('hidden');
       
       try {
         const response = await fetch(WORKER_URL + '/playlist?id=' + pid);
@@ -213,20 +229,22 @@
         
         lastMatched.playlistName = data.name || 'Playlist Spotify';
         lastMatched.spotifyTracks = tracks; 
-        console.log('✅ Playlist letta:', lastMatched.playlistName, '-', tracks.length, 'tracce');
+        ok.innerText = `✅ ${tracks.length} tracce lette dalla playlist "${data.name || 'Spotify'}"`;
+        ok.classList.remove('hidden');
         doMatch(tracks);
       } catch (e) {
+        er.innerHTML = `❌ ${e.message}<br><br><span class="text-xs text-dj-muted">💡 Il player funziona comunque. Per il match automatico, usa il Metodo 2: carica un file CSV/TXT con la lista tracce.</span>`;
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}`;
       } finally { 
         ld.classList.add('hidden'); 
       }
     };
 
+    // METODO 2: FILE
     const mdz = document.getElementById('matcherDropZone'), mfi = document.getElementById('matcherFileInput');
     if (mdz && mfi) {
-      ['dragenter','dragover'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.add('border-aura-gold'); }));
-      ['dragleave','drop'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.remove('border-aura-gold'); }));
+      ['dragenter','dragover'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.add('border-purple-500'); }));
+      ['dragleave','drop'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.remove('border-purple-500'); }));
       mdz.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleMatcherFile(e.dataTransfer.files[0]); });
       mfi.onchange = e => { if (e.target.files.length) handleMatcherFile(e.target.files[0]); };
     }
@@ -236,7 +254,7 @@
       const r = new FileReader();
       r.onload = e => {
         const tracks = parseFile(e.target.result, file.name);
-        if (!tracks.length) { alert('Nessuna traccia'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file'; return; }
+        if (!tracks.length) { alert('Nessuna traccia trovata'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file .m3u8, .txt o .csv'; return; }
         lastMatched.spotifyTracks = tracks; 
         lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '');
         doMatch(tracks);
@@ -288,15 +306,15 @@
 
     function renderFound() {
       const l = document.getElementById('foundList'); if (!l) return;
-      if (!lastMatched.found.length) { l.innerHTML = '<p class="text-center text-slate-500 py-4">Nessun match</p>'; return; }
-      l.innerHTML = lastMatched.found.map(t => `<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');
+      if (!lastMatched.found.length) { l.innerHTML = '<p class="text-center text-dj-muted py-4">Nessun match</p>'; return; }
+      l.innerHTML = lastMatched.found.map(t => `<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-dj-muted">✅ ${t.match.artist} - ${t.match.title}</div></div></div>`).join('');
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     function renderMissing() {
       const l = document.getElementById('missingList'); if (!l) return;
-      if (!lastMatched.missing.length) { l.innerHTML = '<p class="text-center text-slate-500 py-4">🎉 Tutte presenti!</p>'; return; }
-      l.innerHTML = lastMatched.missing.map(t => `<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-slate-400">❌ Mancante</div></div><a href="https://open.spotify.com/search/${encodeURIComponent(t.original)}" target="_blank" class="text-xs bg-green-600 px-2 py-1 rounded text-white">🔍</a></div>`).join('');
+      if (!lastMatched.missing.length) { l.innerHTML = '<p class="text-center text-dj-muted py-4">🎉 Tutte presenti!</p>'; return; }
+      l.innerHTML = lastMatched.missing.map(t => `<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-dj-muted">❌ Mancante</div></div></div>`).join('');
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -306,26 +324,32 @@
     // ESPORTAZIONI
     document.getElementById('exportPresentM3U8Btn').onclick = () => {
       if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - PRESENTI\n\n';
+      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - PRESENTI\n# Generato da AURA DJ\n\n';
       lastMatched.found.forEach(t => { m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; });
       dl(m, 'AURA_Presenti', 'audio/x-mpegurl');
     };
 
     document.getElementById('exportMissingM3U8Btn').onclick = () => {
       if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - MANCANTI\n\n';
+      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - MANCANTI\n# Generato da AURA DJ\n\n';
       lastMatched.missing.forEach(t => { m += `#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`; });
       dl(m, 'AURA_Mancanti', 'audio/x-mpegurl');
     };
 
-    document.getElementById('exportMissingSpotifyBtn').onclick = () => {
-      if (!lastMatched.missing.length) return;
-      window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
+    document.getElementById('exportPresentTxtBtn').onclick = () => {
+      if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
+      let txt = `TRACCE PRESENTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\n${'='.repeat(60)}\n\n`;
+      lastMatched.found.forEach((t, i) => { txt += `${i+1}. ${t.match.artist} - ${t.match.title}\n`; });
+      txt += `\n${'='.repeat(60)}\nTotale: ${lastMatched.found.length} tracce\n`;
+      dl(txt, 'AURA_Presenti', 'text/plain');
     };
 
-    document.getElementById('createSpotifyPlaylistBtn').onclick = () => {
-      if (!lastMatched.missing.length) return;
-      window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
+    document.getElementById('exportMissingTxtBtn').onclick = () => {
+      if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
+      let txt = `TRACCE MANCANTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\n${'='.repeat(60)}\n\n`;
+      lastMatched.missing.forEach((t, i) => { txt += `${i+1}. ${t.artist} - ${t.title}\n`; });
+      txt += `\n${'='.repeat(60)}\nTotale: ${lastMatched.missing.length} tracce da acquistare\n`;
+      dl(txt, 'AURA_Mancanti', 'text/plain');
     };
 
     function dl(content, filename, mimeType) {

@@ -164,16 +164,20 @@
     }
 
     // =====================================================
-    // NORMALIZZAZIONE SUPER FLESSIBILE (come Lexicon DJ)
+    // NORMALIZZAZIONE SUPER AGGRESSIVA
     // =====================================================
     function normalizeText(text) {
       if (!text) return '';
       let t = text.toString().toLowerCase().trim();
       
-      // Rimuovi punteggiatura speciale
+      // Rimuovi tutto tra parentesi
+      t = t.replace(/\([^)]*\)/g, '');
+      t = t.replace(/\[[^\]]*\]/g, '');
+      
+      // Rimuovi punteggiatura
       t = t.replace(/[''""`´]/g, '');
-      t = t.replace(/[~^*]/g, ' ');
-      t = t.replace(/[\(\)\[\]{}]/g, ' ');
+      t = t.replace(/[~^*!@#$%&]/g, '');
+      t = t.replace(/[^\w\s]/g, ' ');
       
       // Gestisci trattini
       t = t.replace(/\s*[-–—]\s*/g, ' ');
@@ -186,10 +190,8 @@
       t = t.replace(/\s*vs\.?\s+/gi, ' ');
       t = t.replace(/\s*x\s+/gi, ' ');
       
-      // Rimuovi SOLO suffissi di versione (non il titolo principale)
-      // Ma NON rimuovere "radio", "edit", "mix" se sono parte del titolo originale
-      // Rimuoviamo solo i suffissi più comuni alla fine
-      t = t.replace(/\s*(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remastered|remaster)\s*$/gi, ' ');
+      // Rimuovi TUTTI i suffissi di versione
+      t = t.replace(/\s*(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remix|remastered|remaster|mix|edit|version|live|acoustic|instrumental|single|new|cut)\s*$/gi, ' ');
       t = t.replace(/\s*(2019|2020|2021|2022|2023|2024|2025)\s*$/g, ' ');
       t = t.replace(/\s*(official\s*video|official\s*audio|hq|hd)\s*$/gi, ' ');
       
@@ -200,7 +202,7 @@
     }
 
     // =====================================================
-    // SIMILARITÀ AVANZATA (più permissiva)
+    // SIMILARITÀ AGGRESSIVA
     // =====================================================
     function calculateSimilarity(a, b) {
       if (!a || !b) return 0;
@@ -233,7 +235,7 @@
     }
 
     // =====================================================
-    // PARSER CSV SPOTIFY (header italiani)
+    // PARSER CSV
     // =====================================================
     function parseCSVLine(line) {
       const cols = [];
@@ -324,7 +326,7 @@
     }
 
     // =====================================================
-    // MATCHING AGGRESSIVO (come Lexicon DJ)
+    // MATCHING SUPER AGGRESSIVO (come Lexicon DJ)
     // =====================================================
     function doMatch(playlistTracks) {
       if (!userLibrary.length) { 
@@ -338,19 +340,24 @@
       const missing = [];
       const usedIndexes = new Set();
       
-      // Crea indice per ricerca veloce
+      // Crea indici per ricerca veloce
       const libraryByTitle = new Map();
       const libraryByArtist = new Map();
+      const libraryByNormalized = new Map();
       
       userLibrary.forEach((track, idx) => {
         const titleNorm = normalizeText(track.title);
         const artistNorm = normalizeText(track.artist);
+        const combinedNorm = artistNorm + ' ' + titleNorm;
         
         if (!libraryByTitle.has(titleNorm)) libraryByTitle.set(titleNorm, []);
         libraryByTitle.get(titleNorm).push({ track, idx });
         
         if (!libraryByArtist.has(artistNorm)) libraryByArtist.set(artistNorm, []);
         libraryByArtist.get(artistNorm).push({ track, idx });
+        
+        if (!libraryByNormalized.has(combinedNorm)) libraryByNormalized.set(combinedNorm, []);
+        libraryByNormalized.get(combinedNorm).push({ track, idx });
       });
       
       for (let playlistTrack of playlistTracks) {
@@ -361,14 +368,13 @@
         
         const plArtistNorm = normalizeText(playlistTrack.artist);
         const plTitleNorm = normalizeText(playlistTrack.title);
+        const plCombinedNorm = plArtistNorm + ' ' + plTitleNorm;
         
-        // STRATEGIA 1: Match ESATTO titolo + artista
-        if (libraryByTitle.has(plTitleNorm)) {
-          const candidates = libraryByTitle.get(plTitleNorm);
+        // STRATEGIA 1: Match ESATTO combinato
+        if (libraryByNormalized.has(plCombinedNorm)) {
+          const candidates = libraryByNormalized.get(plCombinedNorm);
           for (const c of candidates) {
-            if (usedIndexes.has(c.idx)) continue;
-            const libArtistNorm = normalizeText(c.track.artist);
-            if (libArtistNorm === plArtistNorm) {
+            if (!usedIndexes.has(c.idx)) {
               bestMatch = c.track;
               bestScore = 100;
               bestType = 'ESATTO';
@@ -384,14 +390,14 @@
           continue;
         }
         
-        // STRATEGIA 2: Match titolo esatto, artista simile (>=40%)
+        // STRATEGIA 2: Match titolo esatto, artista simile (>=30%)
         if (libraryByTitle.has(plTitleNorm)) {
           const candidates = libraryByTitle.get(plTitleNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
             const libArtistNorm = normalizeText(c.track.artist);
             const artistSim = calculateSimilarity(plArtistNorm, libArtistNorm);
-            if (artistSim >= 40) {
+            if (artistSim >= 30) {
               const score = 85 + (artistSim / 10);
               if (score > bestScore) {
                 bestScore = score;
@@ -403,14 +409,14 @@
           }
         }
         
-        // STRATEGIA 3: Match artista esatto, titolo simile (>=60%)
+        // STRATEGIA 3: Match artista esatto, titolo simile (>=50%)
         if (libraryByArtist.has(plArtistNorm)) {
           const candidates = libraryByArtist.get(plArtistNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
             const libTitleNorm = normalizeText(c.track.title);
             const titleSim = calculateSimilarity(plTitleNorm, libTitleNorm);
-            if (titleSim >= 60) {
+            if (titleSim >= 50) {
               const score = 80 + (titleSim / 10);
               if (score > bestScore) {
                 bestScore = score;
@@ -422,7 +428,7 @@
           }
         }
         
-        // STRATEGIA 4: Fuzzy match generale (soglia 45%)
+        // STRATEGIA 4: Fuzzy match generale (soglia 35%)
         if (bestScore < 70) {
           for (let libIdx = 0; libIdx < userLibrary.length; libIdx++) {
             if (usedIndexes.has(libIdx)) continue;
@@ -435,7 +441,7 @@
             const artistSim = calculateSimilarity(plArtistNorm, libArtistNorm);
             
             // Titolo molto simile + artista simile
-            if (titleSim >= 70 && artistSim >= 40) {
+            if (titleSim >= 60 && artistSim >= 30) {
               const score = (titleSim * 0.6) + (artistSim * 0.4);
               if (score > bestScore) {
                 bestScore = score;
@@ -446,7 +452,7 @@
             }
             
             // Solo titolo altissimo
-            if (titleSim >= 85 && artistSim >= 25) {
+            if (titleSim >= 80 && artistSim >= 20) {
               const score = (titleSim * 0.75) + (artistSim * 0.25);
               if (score > bestScore) {
                 bestScore = score;
@@ -458,8 +464,8 @@
           }
         }
         
-        // Soglia finale: 50% (molto permissiva come Lexicon)
-        if (bestScore >= 50 && bestMatch) {
+        // Soglia finale: 40% (molto permissiva)
+        if (bestScore >= 40 && bestMatch) {
           found.push({ 
             ...playlistTrack, 
             match: bestMatch, 
@@ -506,10 +512,9 @@
     document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
 
     // =====================================================
-    // ESPORTAZIONI CON NOME PLAYLIST DINAMICO
+    // ESPORTAZIONI CON NOME PLAYLIST
     // =====================================================
     function getExportName(type) {
-      // "AURA Nostalgia Anni 90 2000 - Presenti"
       return `AURA ${lastMatched.playlistName} - ${type}`;
     }
 
@@ -589,7 +594,6 @@
           return; 
         }
         
-        // Nome playlist dal file (senza estensione)
         lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
         console.log('📁 Nome playlist:', lastMatched.playlistName);
         doMatch(tracks);

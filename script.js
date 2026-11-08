@@ -179,7 +179,6 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // LETTURA DIRETTA DELLA PLAYLIST PUBBLICA (SCRAPING)
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -192,15 +191,16 @@
       er.classList.add('hidden');
       
       try {
-        // Chiamiamo lo scraper, niente token, niente auth
-        const response = await fetch(WORKER_URL + '/scrape?id=' + pid);
+        const response = await fetch(WORKER_URL + '/playlist?id=' + pid);
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || 'HTTP ' + response.status);
         }
         
         const data = await response.json();
-        if (!data.items || data.items.length === 0) throw new Error('Nessuna traccia trovata. La playlist è pubblica?');
+        if (!data.items || data.items.length === 0) {
+          throw new Error('Nessuna traccia trovata. Verifica che la playlist sia PUBBLICA su Spotify (clicca sui tre puntini → Condividi → Playlist pubblica).');
+        }
         
         const tracks = data.items.map(i => ({
           artist: i.track.artist,
@@ -208,11 +208,12 @@
           original: i.track.original
         }));
         
+        console.log('✅ Playlist caricata:', data.name || 'Playlist', '-', tracks.length, 'tracce');
         lastMatched.spotifyTracks = tracks; 
         doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}<br><span class="text-xs text-slate-400">Nota: Funziona solo con playlist PUBBLICHE. Se è privata, rendila pubblica su Spotify o usa il Metodo 2 (File).</span>`;
+        er.innerHTML = `❌ ${e.message}<br><br><span class="text-xs text-slate-400">💡 Soluzione alternativa:<br>1. Usa Exportify.app per esportare in CSV<br>2. Carica il CSV nel Metodo 2</span>`;
       } finally { 
         ld.classList.add('hidden'); 
       }

@@ -8,7 +8,7 @@
     let userLibrary = [];
     let playlistStructure = {};
     let selectedTracks = new Set();
-    let lastMatched = { found: [], missing: [], spotifyTracks: [], playlistName: 'Playlist' };
+    let lastMatched = { found: [], missing: [], playlistName: 'Playlist' };
 
     function showMsg(t, type) {
       const m = document.getElementById('authMessage');
@@ -170,7 +170,7 @@
       } catch(e){}
     }
 
-    // NORMALIZZAZIONE AVANZATA
+    // NORMALIZZAZIONE
     function norm(t) { 
       if (!t) return ''; 
       return t.toString()
@@ -187,22 +187,16 @@
         .trim(); 
     }
 
-    // SIMILARITÀ AVANZATA
+    // SIMILARITÀ
     function sim(a, b) {
       if (!a || !b) return 0;
       if (a === b) return 100;
-      
-      // Contiene l'uno nell'altro
       if (a.includes(b) || b.includes(a)) {
         return (Math.min(a.length, b.length) / Math.max(a.length, b.length)) * 100;
       }
-      
-      // Confronto parola per parola
       const w1 = a.split(' ').filter(w => w.length > 1);
       const w2 = b.split(' ').filter(w => w.length > 1);
-      
       if (w1.length === 0 || w2.length === 0) return 0;
-      
       let matches = 0;
       for (let word1 of w1) {
         for (let word2 of w2) {
@@ -212,21 +206,22 @@
           }
         }
       }
-      
       return (matches / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // ALGORITMO DI MATCHING INFALLIBILE
+    // MATCHING
     function doMatch(spTracks) {
       if (!userLibrary.length) { 
         alert('⚠️ Carica prima la libreria!'); 
         return; 
       }
       
+      console.log('🔍 Inizio matching:', spTracks.length, 'tracce da confrontare con', userLibrary.length, 'tracce in libreria');
+      
       const found = [];
       const missing = [];
       
-      // Crea indice per ricerca veloce
+      // Indice per ricerca veloce
       const libraryIndex = new Map();
       userLibrary.forEach((track, index) => {
         const key = norm(track.artist) + '|' + norm(track.title);
@@ -238,7 +233,7 @@
         const spTitleNorm = norm(sp.title);
         const spKey = spArtistNorm + '|' + spTitleNorm;
         
-        // 1. Match ESATTO (artista + titolo normalizzati identici)
+        // 1. Match ESATTO
         if (libraryIndex.has(spKey)) {
           const match = libraryIndex.get(spKey).track;
           found.push({ 
@@ -250,7 +245,7 @@
           continue;
         }
         
-        // 2. Match per TITOLO (artista può variare leggermente)
+        // 2. Match per TITOLO
         let bestMatch = null;
         let bestScore = 0;
         let bestType = '';
@@ -259,7 +254,7 @@
           const libArtistNorm = norm(lib.artist);
           const libTitleNorm = norm(lib.title);
           
-          // Titolo identico, artista simile (>= 70%)
+          // Titolo identico
           if (spTitleNorm === libTitleNorm) {
             const artistSim = sim(spArtistNorm, libArtistNorm);
             if (artistSim >= 70) {
@@ -272,7 +267,7 @@
             }
           }
           
-          // Titolo molto simile (>= 90%), artista simile (>= 60%)
+          // Titolo simile
           const titleSim = sim(spTitleNorm, libTitleNorm);
           const artistSim = sim(spArtistNorm, libArtistNorm);
           
@@ -286,7 +281,6 @@
           }
         }
         
-        // Soglia: 70% per accettare il match
         if (bestScore >= 70 && bestMatch) {
           found.push({ 
             ...sp, 
@@ -299,7 +293,7 @@
         }
       }
       
-      lastMatched = { ...lastMatched, found, missing, spotifyTracks: spTracks };
+      lastMatched = { found, missing, playlistName: lastMatched.playlistName };
       document.getElementById('matcherResults').classList.remove('hidden');
       document.getElementById('mTotal').innerText = spTracks.length;
       document.getElementById('mFound').innerText = found.length;
@@ -307,7 +301,7 @@
       renderFound(); 
       renderMissing();
       
-      console.log(`✅ Match: ${found.length} trovate (${found.filter(f => f.matchType === 'ESATTO').length} esatte, ${found.filter(f => f.matchType === 'TITOLO').length} titolo, ${found.filter(f => f.matchType === 'SIMILE').length} simili)`);
+      console.log(`✅ Match completato: ${found.length} trovate (${found.filter(f => f.matchType === 'ESATTO').length} esatte, ${found.filter(f => f.matchType === 'TITOLO').length} titolo, ${found.filter(f => f.matchType === 'SIMILE').length} simili), ${missing.length} mancanti`);
     }
 
     function renderFound() {
@@ -364,7 +358,7 @@
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
     }
 
-    // METODO 2: CARICA FILE CSV/TXT
+    // CARICA FILE PLAYLIST
     const mdz = document.getElementById('matcherDropZone'), mfi = document.getElementById('matcherFileInput');
     if (mdz && mfi) {
       ['dragenter','dragover'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.add('border-purple-500'); }));
@@ -378,8 +372,11 @@
       const r = new FileReader();
       r.onload = e => {
         const tracks = parseFile(e.target.result, file.name);
-        if (!tracks.length) { alert('Nessuna traccia trovata'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file .m3u8, .txt o .csv'; return; }
-        lastMatched.spotifyTracks = tracks; 
+        console.log('📄 File caricato:', file.name, '-', tracks.length, 'tracce trovate');
+        if (tracks.length > 0) {
+          console.log('Prima traccia:', tracks[0]);
+        }
+        if (!tracks.length) { alert('Nessuna traccia trovata. Verifica il formato del file.'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file .m3u8, .txt o .csv'; return; }
         lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '');
         doMatch(tracks);
       };
@@ -388,16 +385,65 @@
 
     function parseFile(content, filename) {
       const tracks = [];
+      const lines = content.split(/\r?\n/);
+      
       if (filename.endsWith('.csv')) {
-        const lines = content.split(/\r?\n/);
+        // Formato Exportify: Track URI, Track Name, Artist, Album, ...
+        // Oppure: Artist, Title, ...
+        const header = lines[0].toLowerCase();
+        console.log('📋 Header CSV:', header);
+        
+        // Rileva il formato
+        let artistCol = -1, titleCol = -1;
+        const cols = header.split(',').map(c => c.trim());
+        
+        if (header.includes('artist') && header.includes('track name')) {
+          // Formato Exportify
+          artistCol = cols.findIndex(c => c === 'artist');
+          titleCol = cols.findIndex(c => c === 'track name');
+        } else if (header.includes('artist') && header.includes('title')) {
+          // Formato standard
+          artistCol = cols.findIndex(c => c === 'artist');
+          titleCol = cols.findIndex(c => c === 'title');
+        } else {
+          // Assumi Artist, Title
+          artistCol = 0;
+          titleCol = 1;
+        }
+        
+        console.log('📊 Colonne rilevate: Artist=', artistCol, 'Title=', titleCol);
+        
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
-          if (cols.length >= 2 && cols[0] && cols[1]) tracks.push({ artist: cols[0], title: cols[1], original: cols[0] + ' - ' + cols[1] });
+          const line = lines[i].trim();
+          if (!line) continue;
+          
+          // Parsa CSV rispettando le virgolette
+          const cols = [];
+          let current = '';
+          let inQuotes = false;
+          for (let char of line) {
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              cols.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          cols.push(current.trim());
+          
+          if (artistCol >= 0 && titleCol >= 0 && cols[artistCol] && cols[titleCol]) {
+            const artist = cols[artistCol];
+            const title = cols[titleCol];
+            tracks.push({ artist, title, original: artist + ' - ' + title });
+          }
         }
       } else {
-        const lines = content.split(/\r?\n/);
+        // TXT o M3U8
         for (let line of lines) {
-          line = line.trim(); if (!line || line.startsWith('#')) continue;
+          line = line.trim();
+          if (!line || line.startsWith('#')) continue;
           const parts = line.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
           if (parts.length < 2) continue;
           let artist = parts[0], title = parts[1];
@@ -405,6 +451,7 @@
           if (artist && title) tracks.push({ artist, title, original: line });
         }
       }
+      
       return tracks;
     }
   }

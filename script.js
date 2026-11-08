@@ -8,7 +8,7 @@
     let userLibrary = [];
     let playlistStructure = {};
     let selectedTracks = new Set();
-    let lastMatched = { found: [], missing: [], spotifyTracks: [] };
+    let lastMatched = { found: [], missing: [], spotifyTracks: [], playlistName: 'Playlist' };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
     function showMsg(t, type) {
@@ -179,6 +179,7 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
+    // LETTURA PLAYLIST SPOTIFY
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -192,15 +193,18 @@
       
       try {
         const response = await fetch(WORKER_URL + '/playlist?id=' + pid);
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'HTTP ' + response.status);
+        
+        // Prima prova a parsare come JSON
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch(e) {
+          throw new Error('Il server ha risposto con un formato non valido. Riprova tra qualche secondo.');
         }
         
-        const data = await response.json();
-        if (!data.items || data.items.length === 0) {
-          throw new Error('Nessuna traccia trovata. Verifica che la playlist sia PUBBLICA su Spotify (clicca sui tre puntini → Condividi → Playlist pubblica).');
-        }
+        if (data.error) throw new Error(data.error);
+        if (!data.items || data.items.length === 0) throw new Error('Nessuna traccia trovata.');
         
         const tracks = data.items.map(i => ({
           artist: i.track.artist,
@@ -208,12 +212,12 @@
           original: i.track.original
         }));
         
-        console.log('✅ Playlist caricata:', data.name || 'Playlist', '-', tracks.length, 'tracce');
+        lastMatched.playlistName = data.name || 'Playlist Spotify';
         lastMatched.spotifyTracks = tracks; 
         doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}<br><br><span class="text-xs text-slate-400">💡 Soluzione alternativa:<br>1. Usa Exportify.app per esportare in CSV<br>2. Carica il CSV nel Metodo 2</span>`;
+        er.innerHTML = `❌ ${e.message}<br><br><span class="text-xs text-slate-400">💡 Alternativa sicura:<br>1. Vai su <a href="https://exportify.app/" target="_blank" class="text-aura-gold underline">Exportify.app</a><br>2. Autorizza con Spotify<br>3. Esporta la playlist in CSV<br>4. Carica il CSV nel Metodo 2 qui sotto</span>`;
       } finally { 
         ld.classList.add('hidden'); 
       }
@@ -233,7 +237,9 @@
       r.onload = e => {
         const tracks = parseFile(e.target.result, file.name);
         if (!tracks.length) { alert('Nessuna traccia'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file'; return; }
-        lastMatched.spotifyTracks = tracks; doMatch(tracks);
+        lastMatched.spotifyTracks = tracks; 
+        lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '');
+        doMatch(tracks);
       };
       r.readAsText(file);
     }
@@ -272,7 +278,7 @@
         }
         if (bs.a >= 85) found.push({ ...sp, match: best, score: bs }); else missing.push(sp);
       }
-      lastMatched = { found, missing, spotifyTracks: spTracks };
+      lastMatched = { ...lastMatched, found, missing, spotifyTracks: spTracks };
       document.getElementById('matcherResults').classList.remove('hidden');
       document.getElementById('mTotal').innerText = spTracks.length;
       document.getElementById('mFound').innerText = found.length;
@@ -297,18 +303,50 @@
     document.getElementById('tabFound').onclick = () => { document.getElementById('foundList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden'); document.getElementById('tabFound').classList.add('active'); document.getElementById('tabMissing').classList.remove('active'); };
     document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
 
+    // EXPORT: Tracce presenti → M3U8 per Engine DJ
     document.getElementById('exportPresentM3U8Btn').onclick = () => {
       if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: AURA - Tracce Presenti\n\n';
-      lastMatched.found.forEach(t => { m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; });
-      dl(m, 'AURA_Presenti');
+      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - PRESENTI\n# Generato da AURA Engine DJ\n# Tracce trovate nella tua libreria\n\n';
+      lastMatched.found.forEach(t => { 
+        m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; 
+      });
+      dl(m, 'AURA_Presenti', 'audio/x-mpegurl');
     };
 
+    // EXPORT: Tracce mancanti → M3U8 per Engine DJ
     document.getElementById('exportMissingM3U8Btn').onclick = () => {
       if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: AURA - Tracce Mancanti\n\n';
-      lastMatched.missing.forEach(t => { m += `#EXTINF:210,${t.original}\n# SPOTIFY: https://open.spotify.com/search/${encodeURIComponent(t.original)}\n${t.original}.mp3\n\n`; });
-      dl(m, 'AURA_Mancanti');
+      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - MANCANTI\n# Generato da AURA Engine DJ\n# Tracce da acquistare/aggiungere\n\n';
+      lastMatched.missing.forEach(t => { 
+        m += `#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`; 
+      });
+      dl(m, 'AURA_Mancanti', 'audio/x-mpegurl');
+    };
+
+    // EXPORT: Mancanti come TXT (lista semplice per ricerca)
+    document.getElementById('exportMissingTxtBtn').onclick = () => {
+      if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
+      let txt = `TRACCE MANCANTI - ${lastMatched.playlistName}\n`;
+      txt += `Generato da AURA Engine DJ il ${new Date().toLocaleDateString('it-IT')}\n`;
+      txt += `${'='.repeat(60)}\n\n`;
+      lastMatched.missing.forEach((t, i) => { 
+        txt += `${i+1}. ${t.artist} - ${t.title}\n`; 
+      });
+      txt += `\n${'='.repeat(60)}\nTotale: ${lastMatched.missing.length} tracce da acquistare\n`;
+      dl(txt, 'AURA_Mancanti_Lista', 'text/plain');
+    };
+
+    // EXPORT: Presenti come TXT
+    document.getElementById('exportPresentTxtBtn').onclick = () => {
+      if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
+      let txt = `TRACCE PRESENTI - ${lastMatched.playlistName}\n`;
+      txt += `Generato da AURA Engine DJ il ${new Date().toLocaleDateString('it-IT')}\n`;
+      txt += `${'='.repeat(60)}\n\n`;
+      lastMatched.found.forEach((t, i) => { 
+        txt += `${i+1}. ${t.match.artist} - ${t.match.title}\n`; 
+      });
+      txt += `\n${'='.repeat(60)}\nTotale: ${lastMatched.found.length} tracce nella libreria\n`;
+      dl(txt, 'AURA_Presenti_Lista', 'text/plain');
     };
 
     document.getElementById('exportMissingSpotifyBtn').onclick = () => {
@@ -321,9 +359,9 @@
       window.open('https://open.spotify.com/search/' + lastMatched.missing.map(t => encodeURIComponent(t.artist + ' ' + t.title)).join(','), '_blank');
     };
 
-    function dl(c, f) {
-      const b = new Blob([c], { type: 'audio/x-mpegurl' }), u = URL.createObjectURL(b), a = document.createElement('a');
-      a.href = u; a.download = f + '_' + new Date().toISOString().split('T')[0] + '.m3u8';
+    function dl(content, filename, mimeType) {
+      const b = new Blob([content], { type: mimeType }), u = URL.createObjectURL(b), a = document.createElement('a');
+      a.href = u; a.download = filename + '_' + new Date().toISOString().split('T')[0] + (mimeType === 'audio/x-mpegurl' ? '.m3u8' : '.txt');
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
     }
   }

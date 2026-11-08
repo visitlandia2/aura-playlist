@@ -61,12 +61,12 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5 text-aura-gold"></i> 3. Track Matcher</h2>
                 <p class="text-slate-400 text-sm mb-4">Confronta una playlist Spotify o un file esportato con la tua libreria</p>
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-4">
-                    <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY (Solo playlist PUBBLICHE)</label>
+                    <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY (Playlist PUBBLICHE)</label>
                     <div class="flex gap-2">
                         <input type="text" id="spotifyLink" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-aura-gold outline-none">
                         <button type="button" id="fetchSpotifyBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i> Carica</button>
                     </div>
-                    <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Lettura playlist pubblica...</span></div>
+                    <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Lettura playlist...</span></div>
                     <div id="spotifyError" class="hidden mt-3 text-red-400 text-sm"></div>
                 </div>
                 <div class="flex items-center gap-2 my-4"><div class="flex-1 h-px bg-slate-700"></div><span class="text-slate-500 text-sm">oppure</span><div class="flex-1 h-px bg-slate-700"></div></div>
@@ -90,11 +90,19 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                     </div>
                     <div id="foundList" class="space-y-2 max-h-64 overflow-y-auto pr-2 mb-4"></div>
                     <div id="missingList" class="hidden space-y-2 max-h-64 overflow-y-auto pr-2 mb-4"></div>
-                    <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
-                        <button type="button" id="exportMissingSpotifyBtn" class="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm">🔍 Cerca Mancanti su Spotify</button>
-                        <button type="button" id="exportPresentM3U8Btn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm">📥 Esporta Presenti .m3u8</button>
-                        <button type="button" id="exportMissingM3U8Btn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm">📥 Esporta Mancanti .m3u8</button>
-                        <button type="button" id="createSpotifyPlaylistBtn" class="bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold px-4 py-2 rounded-lg text-sm">🎵 Crea Playlist Spotify</button>
+                    
+                    <div class="border-t border-slate-700 pt-4 mt-4">
+                        <h3 class="text-sm font-bold text-aura-gold mb-3">📥 ESPORTA RISULTATI</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <button type="button" id="exportPresentM3U8Btn" class="bg-gradient-to-r from-aura-cyan to-blue-500 text-slate-900 font-bold px-3 py-2 rounded-lg text-xs">📥 Presenti .m3u8<br><span class="font-normal opacity-75">per Engine DJ</span></button>
+                            <button type="button" id="exportMissingM3U8Btn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white font-bold px-3 py-2 rounded-lg text-xs">📥 Mancanti .m3u8<br><span class="font-normal opacity-75">per Engine DJ</span></button>
+                            <button type="button" id="exportPresentTxtBtn" class="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold px-3 py-2 rounded-lg text-xs">📄 Presenti .txt<br><span class="font-normal opacity-75">lista testo</span></button>
+                            <button type="button" id="exportMissingTxtBtn" class="bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold px-3 py-2 rounded-lg text-xs">📄 Mancanti .txt<br><span class="font-normal opacity-75">lista testo</span></button>
+                        </div>
+                        <div class="flex flex-wrap gap-2 mt-3">
+                            <button type="button" id="exportMissingSpotifyBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-lg text-xs">🔍 Cerca Mancanti su Spotify</button>
+                            <button type="button" id="createSpotifyPlaylistBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg text-xs">🎵 Crea Playlist Spotify</button>
+                        </div>
                     </div>
                 </div>
             </section>

@@ -11,16 +11,6 @@
     let lastMatched = { found: [], missing: [], spotifyTracks: [] };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get('spotify_access');
-    const refreshToken = urlParams.get('spotify_refresh');
-    if (accessToken && refreshToken) {
-      localStorage.setItem('spotify_access_token', accessToken);
-      localStorage.setItem('spotify_refresh_token', refreshToken);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      alert('✅ Autorizzazione Spotify completata!');
-    }
-
     function showMsg(t, type) {
       const m = document.getElementById('authMessage');
       if (!m) return;
@@ -189,39 +179,7 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    async function refreshAccessToken() {
-      const refreshToken = localStorage.getItem('spotify_refresh_token');
-      if (!refreshToken) return null;
-      try {
-        const res = await fetch(WORKER_URL + '/refresh?refresh=' + refreshToken);
-        const data = await res.json();
-        if (data.access_token) {
-          localStorage.setItem('spotify_access_token', data.access_token);
-          return data.access_token;
-        }
-      } catch(e) {}
-      return null;
-    }
-
-    function updateTokenStatus() {
-      const token = localStorage.getItem('spotify_access_token');
-      const statusEl = document.getElementById('tokenStatus');
-      if (statusEl) {
-        if (token) {
-          statusEl.innerText = '✅ Token presente: ' + token.substring(0, 30) + '...';
-          statusEl.className = 'mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded text-xs text-green-300';
-        } else {
-          statusEl.innerText = '❌ Token non presente. Clicca "Autorizza Spotify".';
-          statusEl.className = 'mt-2 p-2 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-300';
-        }
-      }
-    }
-    updateTokenStatus();
-
-    document.getElementById('authSpotifyBtn').onclick = function() {
-      window.location.href = WORKER_URL + '/auth';
-    };
-
+    // LETTURA DIRETTA DELLA PLAYLIST PUBBLICA (SCRAPING)
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -229,57 +187,35 @@
       const m = link.match(/playlist\/([a-zA-Z0-9]+)/);
       if (!m) { alert('Link non valido'); return; }
       const pid = m[1];
-      ld.classList.remove('hidden'); er.classList.add('hidden');
+      
+      ld.classList.remove('hidden'); 
+      er.classList.add('hidden');
       
       try {
-        let token = localStorage.getItem('spotify_access_token');
-        if (!token) {
-          er.classList.remove('hidden');
-          er.innerHTML = '❌ Devi prima autorizzare Spotify.';
-          ld.classList.add('hidden');
-          return;
-        }
-        
-        let response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        
-        if (response.status === 401) {
-          token = await refreshAccessToken();
-          if (!token) {
-            er.classList.remove('hidden');
-            er.innerHTML = '❌ Token scaduto. Ri-autorizza Spotify.';
-            ld.classList.add('hidden');
-            return;
-          }
-          response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
-            headers: { 'Authorization': 'Bearer ' + token }
-          });
-        }
-        
+        // Chiamiamo lo scraper, niente token, niente auth
+        const response = await fetch(WORKER_URL + '/scrape?id=' + pid);
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error('HTTP ' + response.status + ' - ' + errorText);
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'HTTP ' + response.status);
         }
         
         const data = await response.json();
-        if (data.error) throw new Error(data.error.message || 'Errore Spotify');
+        if (!data.items || data.items.length === 0) throw new Error('Nessuna traccia trovata. La playlist è pubblica?');
         
-        const tracks = data.items.map(i => {
-          const t = i.track; if (!t) return null;
-          return { 
-            artist: t.artists.map(a => a.name).join(', '), 
-            title: t.name, 
-            original: t.artists.map(a => a.name).join(', ') + ' - ' + t.name 
-          };
-        }).filter(t => t);
+        const tracks = data.items.map(i => ({
+          artist: i.track.artist,
+          title: i.track.title,
+          original: i.track.original
+        }));
         
-        if (!tracks.length) throw new Error('Nessuna traccia');
-        lastMatched.spotifyTracks = tracks; doMatch(tracks);
+        lastMatched.spotifyTracks = tracks; 
+        doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}`;
-      } finally { ld.classList.add('hidden'); }
+        er.innerHTML = `❌ ${e.message}<br><span class="text-xs text-slate-400">Nota: Funziona solo con playlist PUBBLICHE. Se è privata, rendila pubblica su Spotify o usa il Metodo 2 (File).</span>`;
+      } finally { 
+        ld.classList.add('hidden'); 
+      }
     };
 
     const mdz = document.getElementById('matcherDropZone'), mfi = document.getElementById('matcherFileInput');

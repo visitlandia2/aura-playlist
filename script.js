@@ -43,7 +43,6 @@
         const em = document.getElementById('email').value.trim();
         const pw = document.getElementById('password').value;
         if (!em || !pw) { showMsg('❌ Inserisci email e password', 'error'); return; }
-        
         try {
           if (authMode === 'login') {
             await supabase.signIn(em, pw);
@@ -87,14 +86,9 @@
       document.getElementById('password').value = '';
     };
 
-    // AUTO-LOGIN
-    if (supabase.isLoggedIn()) {
-      showDash();
-    } else {
-      updateAuthUI();
-    }
+    if (supabase.isLoggedIn()) showDash(); else updateAuthUI();
 
-    // CARICA LIBRERIA
+    // LIBRERIA
     const dz = document.getElementById('dropZone');
     const fi = document.getElementById('fileInput');
     if (dz && fi) {
@@ -143,7 +137,7 @@
       let h = '';
       for (let n in playlistStructure) {
         const tr = playlistStructure[n];
-        h += `<div class="mb-2"><div class="folder-h bg-dj-bg p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span> ${n}</span><span class="text-xs text-dj-muted">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;
+        h += `<div class="mb-2"><div class="folder-h bg-dj-bg p-2 rounded cursor-pointer flex justify-between" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📁 ${n}</span><span class="text-xs text-dj-muted">${tr.length} tracce</span></div><div class="ml-4 mt-1 hidden">`;
         tr.forEach((tk, i) => { h += `<label class="flex items-center gap-2 p-1 hover:bg-dj-card rounded cursor-pointer"><input type="checkbox" class="tcb" data-id="${n}-${i}" onchange="updSel()"> <span class="text-sm">${tk.artist} - ${tk.title}</span></label>`; });
         h += '</div></div>';
       }
@@ -169,26 +163,45 @@
       } catch(e){}
     }
 
-    // NORMALIZZAZIONE
+    // =====================================================
+    // NORMALIZZAZIONE SUPER FLESSIBILE (come Lexicon DJ)
+    // =====================================================
     function normalizeText(text) {
       if (!text) return '';
-      let t = text.toString().toLowerCase();
+      let t = text.toString().toLowerCase().trim();
+      
+      // Rimuovi punteggiatura speciale
       t = t.replace(/[''""`´]/g, '');
       t = t.replace(/[~^*]/g, ' ');
       t = t.replace(/[\(\)\[\]{}]/g, ' ');
+      
+      // Gestisci trattini
       t = t.replace(/\s*[-–—]\s*/g, ' ');
+      
+      // Sostituisci & con "and"
       t = t.replace(/\s*&\s*/g, ' and ');
+      
+      // Rimuovi feat, featuring, vs, x
       t = t.replace(/\s*(feat\.?|featuring|ft\.?)\s+/gi, ' ');
       t = t.replace(/\s*vs\.?\s+/gi, ' ');
       t = t.replace(/\s*x\s+/gi, ' ');
-      t = t.replace(/\b(radio|album|original|extended|club|remix|remastered|remaster|mix|edit|version|live|acoustic|instrumental|single|new|cut)\b/gi, ' ');
-      t = t.replace(/\b(2019|2020|2021|2022|2023|2024|2025)\b/g, ' ');
-      t = t.replace(/\b(official|video|audio|hq|hd)\b/gi, ' ');
+      
+      // Rimuovi SOLO suffissi di versione (non il titolo principale)
+      // Ma NON rimuovere "radio", "edit", "mix" se sono parte del titolo originale
+      // Rimuoviamo solo i suffissi più comuni alla fine
+      t = t.replace(/\s*(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remastered|remaster)\s*$/gi, ' ');
+      t = t.replace(/\s*(2019|2020|2021|2022|2023|2024|2025)\s*$/g, ' ');
+      t = t.replace(/\s*(official\s*video|official\s*audio|hq|hd)\s*$/gi, ' ');
+      
+      // Normalizza spazi
       t = t.replace(/\s+/g, ' ').trim();
+      
       return t;
     }
 
-    // SIMILARITÀ
+    // =====================================================
+    // SIMILARITÀ AVANZATA (più permissiva)
+    // =====================================================
     function calculateSimilarity(a, b) {
       if (!a || !b) return 0;
       if (a === b) return 100;
@@ -219,7 +232,9 @@
       return (matches / Math.max(wordsA.length, wordsB.length)) * 100;
     }
 
-    // PARSER CSV SPOTIFY
+    // =====================================================
+    // PARSER CSV SPOTIFY (header italiani)
+    // =====================================================
     function parseCSVLine(line) {
       const cols = [];
       let current = '';
@@ -249,10 +264,16 @@
       const lines = content.split(/\r?\n/).filter(l => l.trim());
       if (lines.length < 2) return [];
       
-      const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+      const header = parseCSVLine(lines[0]).map(h => {
+        let cleaned = h.trim();
+        if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+          cleaned = cleaned.substring(1, cleaned.length - 1);
+        }
+        return cleaned.toLowerCase();
+      });
+      
       console.log('Header CSV:', header);
       
-      // Cerca colonne (italiano e inglese)
       let artistIdx = -1, titleIdx = -1;
       
       header.forEach((h, i) => {
@@ -260,7 +281,6 @@
         if (h === "nome della traccia" || h === 'track name' || h === 'title') titleIdx = i;
       });
       
-      // Fallback posizioni standard Exportify
       if (artistIdx === -1 || titleIdx === -1) {
         if (header.length >= 4) {
           titleIdx = 1;
@@ -278,8 +298,15 @@
         const cols = parseCSVLine(lines[i]);
         if (cols.length <= Math.max(artistIdx, titleIdx)) continue;
         
-        const artist = cols[artistIdx];
-        const title = cols[titleIdx];
+        let artist = cols[artistIdx];
+        let title = cols[titleIdx];
+        
+        if (artist && artist.startsWith('"') && artist.endsWith('"')) {
+          artist = artist.substring(1, artist.length - 1);
+        }
+        if (title && title.startsWith('"') && title.endsWith('"')) {
+          title = title.substring(1, title.length - 1);
+        }
         
         if (!artist || !title) continue;
         if (artist.toLowerCase().includes('artista') || title.toLowerCase().includes('traccia')) continue;
@@ -291,23 +318,40 @@
         });
       }
       
-      console.log('Parse CSV:', tracks.length, 'tracce trovate');
+      console.log('✅ Parse CSV:', tracks.length, 'tracce trovate');
       if (tracks.length > 0) console.log('Esempio:', tracks[0]);
       return tracks;
     }
 
-    // MATCHING
+    // =====================================================
+    // MATCHING AGGRESSIVO (come Lexicon DJ)
+    // =====================================================
     function doMatch(playlistTracks) {
       if (!userLibrary.length) { 
         alert('⚠️ Carica prima la libreria!'); 
         return; 
       }
       
-      console.log('Matching:', playlistTracks.length, 'vs', userLibrary.length);
+      console.log('🔍 Matching:', playlistTracks.length, 'vs', userLibrary.length);
       
       const found = [];
       const missing = [];
       const usedIndexes = new Set();
+      
+      // Crea indice per ricerca veloce
+      const libraryByTitle = new Map();
+      const libraryByArtist = new Map();
+      
+      userLibrary.forEach((track, idx) => {
+        const titleNorm = normalizeText(track.title);
+        const artistNorm = normalizeText(track.artist);
+        
+        if (!libraryByTitle.has(titleNorm)) libraryByTitle.set(titleNorm, []);
+        libraryByTitle.get(titleNorm).push({ track, idx });
+        
+        if (!libraryByArtist.has(artistNorm)) libraryByArtist.set(artistNorm, []);
+        libraryByArtist.get(artistNorm).push({ track, idx });
+      });
       
       for (let playlistTrack of playlistTracks) {
         let bestMatch = null;
@@ -318,66 +362,104 @@
         const plArtistNorm = normalizeText(playlistTrack.artist);
         const plTitleNorm = normalizeText(playlistTrack.title);
         
-        for (let libIdx = 0; libIdx < userLibrary.length; libIdx++) {
-          if (usedIndexes.has(libIdx)) continue;
-          
-          const libTrack = userLibrary[libIdx];
-          const libArtistNorm = normalizeText(libTrack.artist);
-          const libTitleNorm = normalizeText(libTrack.title);
-          
-          // Match perfetto
-          if (plArtistNorm === libArtistNorm && plTitleNorm === libTitleNorm) {
-            bestMatch = libTrack;
-            bestScore = 100;
-            bestType = 'ESATTO';
-            bestLibIndex = libIdx;
-            break;
-          }
-          
-          // Match titolo perfetto, artista simile
-          if (plTitleNorm === libTitleNorm) {
-            const artistSim = calculateSimilarity(playlistTrack.artist, libTrack.artist);
-            if (artistSim >= 50) {
-              const score = 90 + (artistSim / 10);
-              if (score > bestScore) {
-                bestScore = score;
-                bestMatch = libTrack;
-                bestType = 'TITOLO';
-                bestLibIndex = libIdx;
-              }
-            }
-          }
-          
-          // Match artista perfetto, titolo simile
-          if (plArtistNorm === libArtistNorm) {
-            const titleSim = calculateSimilarity(playlistTrack.title, libTrack.title);
-            if (titleSim >= 70) {
-              const score = 85 + (titleSim / 10);
-              if (score > bestScore) {
-                bestScore = score;
-                bestMatch = libTrack;
-                bestType = 'ARTISTA';
-                bestLibIndex = libIdx;
-              }
-            }
-          }
-          
-          // Match fuzzy
-          const titleSim = calculateSimilarity(playlistTrack.title, libTrack.title);
-          const artistSim = calculateSimilarity(playlistTrack.artist, libTrack.artist);
-          
-          if (titleSim >= 75 && artistSim >= 50) {
-            const score = (titleSim * 0.6) + (artistSim * 0.4);
-            if (score > bestScore) {
-              bestScore = score;
-              bestMatch = libTrack;
-              bestType = 'SIMILE';
-              bestLibIndex = libIdx;
+        // STRATEGIA 1: Match ESATTO titolo + artista
+        if (libraryByTitle.has(plTitleNorm)) {
+          const candidates = libraryByTitle.get(plTitleNorm);
+          for (const c of candidates) {
+            if (usedIndexes.has(c.idx)) continue;
+            const libArtistNorm = normalizeText(c.track.artist);
+            if (libArtistNorm === plArtistNorm) {
+              bestMatch = c.track;
+              bestScore = 100;
+              bestType = 'ESATTO';
+              bestLibIndex = c.idx;
+              break;
             }
           }
         }
         
-        if (bestScore >= 60 && bestMatch) {
+        if (bestMatch) {
+          found.push({ ...playlistTrack, match: bestMatch, score: 100, matchType: 'ESATTO' });
+          usedIndexes.add(bestLibIndex);
+          continue;
+        }
+        
+        // STRATEGIA 2: Match titolo esatto, artista simile (>=40%)
+        if (libraryByTitle.has(plTitleNorm)) {
+          const candidates = libraryByTitle.get(plTitleNorm);
+          for (const c of candidates) {
+            if (usedIndexes.has(c.idx)) continue;
+            const libArtistNorm = normalizeText(c.track.artist);
+            const artistSim = calculateSimilarity(plArtistNorm, libArtistNorm);
+            if (artistSim >= 40) {
+              const score = 85 + (artistSim / 10);
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = c.track;
+                bestType = 'TITOLO';
+                bestLibIndex = c.idx;
+              }
+            }
+          }
+        }
+        
+        // STRATEGIA 3: Match artista esatto, titolo simile (>=60%)
+        if (libraryByArtist.has(plArtistNorm)) {
+          const candidates = libraryByArtist.get(plArtistNorm);
+          for (const c of candidates) {
+            if (usedIndexes.has(c.idx)) continue;
+            const libTitleNorm = normalizeText(c.track.title);
+            const titleSim = calculateSimilarity(plTitleNorm, libTitleNorm);
+            if (titleSim >= 60) {
+              const score = 80 + (titleSim / 10);
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = c.track;
+                bestType = 'ARTISTA';
+                bestLibIndex = c.idx;
+              }
+            }
+          }
+        }
+        
+        // STRATEGIA 4: Fuzzy match generale (soglia 45%)
+        if (bestScore < 70) {
+          for (let libIdx = 0; libIdx < userLibrary.length; libIdx++) {
+            if (usedIndexes.has(libIdx)) continue;
+            
+            const libTrack = userLibrary[libIdx];
+            const libTitleNorm = normalizeText(libTrack.title);
+            const libArtistNorm = normalizeText(libTrack.artist);
+            
+            const titleSim = calculateSimilarity(plTitleNorm, libTitleNorm);
+            const artistSim = calculateSimilarity(plArtistNorm, libArtistNorm);
+            
+            // Titolo molto simile + artista simile
+            if (titleSim >= 70 && artistSim >= 40) {
+              const score = (titleSim * 0.6) + (artistSim * 0.4);
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = libTrack;
+                bestType = 'SIMILE';
+                bestLibIndex = libIdx;
+              }
+            }
+            
+            // Solo titolo altissimo
+            if (titleSim >= 85 && artistSim >= 25) {
+              const score = (titleSim * 0.75) + (artistSim * 0.25);
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = libTrack;
+                bestType = 'TITOLO-ALT';
+                bestLibIndex = libIdx;
+              }
+            }
+          }
+        }
+        
+        // Soglia finale: 50% (molto permissiva come Lexicon)
+        if (bestScore >= 50 && bestMatch) {
           found.push({ 
             ...playlistTrack, 
             match: bestMatch, 
@@ -400,61 +482,75 @@
       
       const exact = found.filter(f => f.matchType === 'ESATTO').length;
       const title = found.filter(f => f.matchType === 'TITOLO').length;
-      const similar = found.filter(f => f.matchType === 'SIMILE').length;
+      const artist = found.filter(f => f.matchType === 'ARTISTA').length;
+      const similar = found.filter(f => f.matchType === 'SIMILE' || f.matchType === 'TITOLO-ALT').length;
       
-      console.log(`Risultati: ${found.length}/${playlistTracks.length} (${exact} esatti, ${title} titolo, ${similar} simili), ${missing.length} mancanti`);
+      console.log(`✅ Risultati: ${found.length}/${playlistTracks.length} (${exact} esatti, ${title} titolo, ${artist} artista, ${similar} simili), ${missing.length} mancanti`);
     }
 
     function renderFound() {
       const l = document.getElementById('foundList'); if (!l) return;
       if (!lastMatched.found.length) { l.innerHTML = '<p class="text-center text-dj-muted py-4">Nessun match</p>'; return; }
-      l.innerHTML = lastMatched.found.map(t => `<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-dj-muted"> ${t.match.artist} - ${t.match.title} <span class="text-purple-400">[${t.matchType} ${t.score}%]</span></div></div></div>`).join('');
+      l.innerHTML = lastMatched.found.map(t => `<div class="bg-green-500/10 border border-green-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-dj-muted">✅ ${t.match.artist} - ${t.match.title} <span class="text-purple-400">[${t.matchType} ${t.score}%]</span></div></div></div>`).join('');
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     function renderMissing() {
       const l = document.getElementById('missingList'); if (!l) return;
-      if (!lastMatched.missing.length) { l.innerHTML = '<p class="text-center text-dj-muted py-4"> Tutte presenti!</p>'; return; }
-      l.innerHTML = lastMatched.missing.map(t => `<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-dj-muted"> Mancante</div></div></div>`).join('');
+      if (!lastMatched.missing.length) { l.innerHTML = '<p class="text-center text-dj-muted py-4">🎉 Tutte presenti!</p>'; return; }
+      l.innerHTML = lastMatched.missing.map(t => `<div class="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2"><i data-lucide="x-circle" class="w-4 h-4 text-red-400"></i><div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate">${t.original}</div><div class="text-xs text-dj-muted">❌ Mancante</div></div></div>`).join('');
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     document.getElementById('tabFound').onclick = () => { document.getElementById('foundList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden'); document.getElementById('tabFound').classList.add('active'); document.getElementById('tabMissing').classList.remove('active'); };
     document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
 
-    // ESPORTAZIONI
+    // =====================================================
+    // ESPORTAZIONI CON NOME PLAYLIST DINAMICO
+    // =====================================================
+    function getExportName(type) {
+      // "AURA Nostalgia Anni 90 2000 - Presenti"
+      return `AURA ${lastMatched.playlistName} - ${type}`;
+    }
+
     document.getElementById('exportPresentM3U8Btn').onclick = () => {
       if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - PRESENTI\n# Generato da AURA DJ - ' + new Date().toLocaleDateString('it-IT') + '\n\n';
+      let m = '#EXTM3U\n# PLAYLIST: ' + getExportName('Presenti') + '\n# Generato da AURA DJ - ' + new Date().toLocaleDateString('it-IT') + '\n\n';
       lastMatched.found.forEach(t => { m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; });
-      dl(m, 'AURA_Presenti', 'audio/x-mpegurl');
+      dl(m, getExportName('Presenti'), 'audio/x-mpegurl');
     };
 
     document.getElementById('exportMissingM3U8Btn').onclick = () => {
       if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - MANCANTI\n# Generato da AURA DJ - ' + new Date().toLocaleDateString('it-IT') + '\n\n';
+      let m = '#EXTM3U\n# PLAYLIST: ' + getExportName('Mancanti') + '\n# Generato da AURA DJ - ' + new Date().toLocaleDateString('it-IT') + '\n\n';
       lastMatched.missing.forEach(t => { m += `#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`; });
-      dl(m, 'AURA_Mancanti', 'audio/x-mpegurl');
+      dl(m, getExportName('Mancanti'), 'audio/x-mpegurl');
     };
 
     document.getElementById('exportPresentTxtBtn').onclick = () => {
       if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let txt = `TRACCE PRESENTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\nTotale: ${lastMatched.found.length} tracce\n${'='.repeat(60)}\n\n`;
+      let txt = `${getExportName('Presenti')}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\nTotale: ${lastMatched.found.length} tracce\n${'='.repeat(60)}\n\n`;
       lastMatched.found.forEach((t, i) => { txt += `${i+1}. ${t.match.artist} - ${t.match.title} [${t.matchType} ${t.score}%]\n`; });
-      dl(txt, 'AURA_Presenti', 'text/plain');
+      dl(txt, getExportName('Presenti'), 'text/plain');
     };
 
     document.getElementById('exportMissingTxtBtn').onclick = () => {
       if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let txt = `TRACCE MANCANTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\nTotale: ${lastMatched.missing.length} tracce\n${'='.repeat(60)}\n\n`;
+      let txt = `${getExportName('Mancanti')}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\nTotale: ${lastMatched.missing.length} tracce\n${'='.repeat(60)}\n\n`;
       lastMatched.missing.forEach((t, i) => { txt += `${i+1}. ${t.artist} - ${t.title}\n`; });
-      dl(txt, 'AURA_Mancanti', 'text/plain');
+      dl(txt, getExportName('Mancanti'), 'text/plain');
     };
 
     function dl(content, filename, mimeType) {
-      const b = new Blob([content], { type: mimeType }), u = URL.createObjectURL(b), a = document.createElement('a');
-      a.href = u; a.download = filename + '_' + new Date().toISOString().split('T')[0] + (mimeType === 'audio/x-mpegurl' ? '.m3u8' : '.txt');
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+      const b = new Blob([content], { type: mimeType });
+      const u = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = u; 
+      a.download = filename.replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ\s_-]/g, '').replace(/\s+/g, '_') + '_' + new Date().toISOString().split('T')[0] + (mimeType === 'audio/x-mpegurl' ? '.m3u8' : '.txt');
+      document.body.appendChild(a); 
+      a.click(); 
+      document.body.removeChild(a); 
+      URL.revokeObjectURL(u);
     }
 
     // CARICA FILE PLAYLIST
@@ -493,7 +589,9 @@
           return; 
         }
         
-        lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '');
+        // Nome playlist dal file (senza estensione)
+        lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+        console.log('📁 Nome playlist:', lastMatched.playlistName);
         doMatch(tracks);
       };
       r.readAsText(file);

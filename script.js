@@ -170,24 +170,30 @@
       } catch(e){}
     }
 
-    // NORMALIZZAZIONE
+    // =====================================================
+    // NORMALIZZAZIONE AVANZATA (come Lexicon DJ)
+    // =====================================================
     function norm(t) { 
       if (!t) return ''; 
       return t.toString()
         .toLowerCase()
-        .replace(/[~"'`´^\(\)\[\]{}]/g, ' ')
+        .replace(/[''`´]/g, '')  // apostrofi
+        .replace(/[~"^\(\)\[\]{}]/g, ' ')
         .replace(/\s*[-–—]\s*/g, ' ')
+        .replace(/\s*&\s*/g, ' and ')
         .replace(/\s*ft\.?\s+/gi, ' ')
         .replace(/\s*feat\.?\s+/gi, ' ')
         .replace(/\s*featuring\s+/gi, ' ')
         .replace(/\s*vs\.?\s+/gi, ' ')
         .replace(/\s*x\s+/gi, ' ')
-        .replace(/\b(radio\s*edit|album\s*version|original\s*mix|extended\s*mix|club\s*mix|remix|remastered|remaster|2019|2020|2021|2022|2023|2024|2025|official|video|audio|hq|hd|live|acoustic|instrumental)\b/gi, ' ')
+        .replace(/\b(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remix|remastered|remaster|2019|2020|2021|2022|2023|2024|2025|official|video|audio|hq|hd|live|acoustic|instrumental|single\s*version|new\s*version|revisited|edit|mix|cut|version)\b/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim(); 
     }
 
-    // SIMILARITÀ
+    // =====================================================
+    // SIMILARITÀ TRA STRINGHE
+    // =====================================================
     function sim(a, b) {
       if (!a || !b) return 0;
       if (a === b) return 100;
@@ -209,23 +215,105 @@
       return (matches / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // MATCHING
+    // =====================================================
+    // PARSER CSV CORRETTO (gestisce header italiano + virgolette)
+    // =====================================================
+    function parseCSVLine(line) {
+      const cols = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i+1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          cols.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      cols.push(current.trim());
+      return cols;
+    }
+
+    function parseCSVContent(content) {
+      const lines = content.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return [];
+      
+      const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+      console.log('📋 Header CSV:', header);
+      
+      // Trova indici colonne (supporta italiano e inglese)
+      let artistIdx = -1, titleIdx = -1;
+      
+      header.forEach((h, i) => {
+        if (h.includes('nome dell\'artista') || h.includes('artist name') || h === 'artist') artistIdx = i;
+        if (h.includes('nome della traccia') || h.includes('track name') || h === 'title') titleIdx = i;
+      });
+      
+      // Fallback: se non trova, usa posizioni fisse (Exportify standard)
+      if (artistIdx === -1 && titleIdx === -1) {
+        // Formato Exportify italiano: URI traccia(0), Nome traccia(1), URI artista(2), Nome artista(3)
+        if (header.length >= 4 && header[0].includes('uri')) {
+          titleIdx = 1;
+          artistIdx = 3;
+        } else {
+          artistIdx = 0;
+          titleIdx = 1;
+        }
+      }
+      
+      console.log('📊 Indici: Artist=', artistIdx, 'Title=', titleIdx);
+      
+      const tracks = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        if (cols.length <= Math.max(artistIdx, titleIdx)) continue;
+        
+        const artist = cols[artistIdx];
+        const title = cols[titleIdx];
+        
+        if (artist && title && artist !== 'Nome dell\'artista' && title !== 'Nome della traccia') {
+          tracks.push({ 
+            artist: artist, 
+            title: title, 
+            original: artist + ' - ' + title 
+          });
+        }
+      }
+      
+      console.log('✅ Parse CSV:', tracks.length, 'tracce trovate');
+      if (tracks.length > 0) console.log('Prima traccia:', tracks[0]);
+      return tracks;
+    }
+
+    // =====================================================
+    // MATCHING INFALLIBILE (come Lexicon DJ)
+    // =====================================================
     function doMatch(spTracks) {
       if (!userLibrary.length) { 
         alert('⚠️ Carica prima la libreria!'); 
         return; 
       }
       
-      console.log('🔍 Inizio matching:', spTracks.length, 'tracce da confrontare con', userLibrary.length, 'tracce in libreria');
+      console.log('🔍 Matching:', spTracks.length, 'tracce vs', userLibrary.length, 'in libreria');
       
       const found = [];
       const missing = [];
+      const usedLibrary = new Set(); // Evita match duplicati
       
       // Indice per ricerca veloce
       const libraryIndex = new Map();
       userLibrary.forEach((track, index) => {
         const key = norm(track.artist) + '|' + norm(track.title);
-        libraryIndex.set(key, { track, index });
+        if (!libraryIndex.has(key)) libraryIndex.set(key, []);
+        libraryIndex.get(key).push({ track, index });
       });
       
       for (let sp of spTracks) {
@@ -233,32 +321,40 @@
         const spTitleNorm = norm(sp.title);
         const spKey = spArtistNorm + '|' + spTitleNorm;
         
-        // 1. Match ESATTO
-        if (libraryIndex.has(spKey)) {
-          const match = libraryIndex.get(spKey).track;
-          found.push({ 
-            ...sp, 
-            match: match, 
-            score: 100,
-            matchType: 'ESATTO'
-          });
-          continue;
-        }
-        
-        // 2. Match per TITOLO
         let bestMatch = null;
         let bestScore = 0;
         let bestType = '';
         
+        // 1. Match ESATTO (artista + titolo normalizzati)
+        if (libraryIndex.has(spKey)) {
+          const candidates = libraryIndex.get(spKey);
+          for (const c of candidates) {
+            if (!usedLibrary.has(c.index)) {
+              bestMatch = c.track;
+              bestScore = 100;
+              bestType = 'ESATTO';
+              usedLibrary.add(c.index);
+              break;
+            }
+          }
+          if (bestMatch) {
+            found.push({ ...sp, match: bestMatch, score: 100, matchType: 'ESATTO' });
+            continue;
+          }
+        }
+        
+        // 2. Match per TITOLO (artista può variare)
         for (let lib of userLibrary) {
+          if (usedLibrary.has(userLibrary.indexOf(lib))) continue;
+          
           const libArtistNorm = norm(lib.artist);
           const libTitleNorm = norm(lib.title);
           
-          // Titolo identico
+          // Titolo identico, artista simile
           if (spTitleNorm === libTitleNorm) {
             const artistSim = sim(spArtistNorm, libArtistNorm);
-            if (artistSim >= 70) {
-              const totalScore = 85 + (artistSim / 10);
+            if (artistSim >= 50) {
+              const totalScore = 80 + (artistSim / 5);
               if (totalScore > bestScore) {
                 bestScore = totalScore;
                 bestMatch = lib;
@@ -267,11 +363,11 @@
             }
           }
           
-          // Titolo simile
+          // Titolo molto simile + artista simile
           const titleSim = sim(spTitleNorm, libTitleNorm);
           const artistSim = sim(spArtistNorm, libArtistNorm);
           
-          if (titleSim >= 90 && artistSim >= 60) {
+          if (titleSim >= 85 && artistSim >= 50) {
             const totalScore = (titleSim * 0.6) + (artistSim * 0.4);
             if (totalScore > bestScore) {
               bestScore = totalScore;
@@ -279,15 +375,27 @@
               bestType = 'SIMILE';
             }
           }
+          
+          // Solo titolo altissimo
+          if (titleSim >= 95 && artistSim >= 30) {
+            const totalScore = (titleSim * 0.7) + (artistSim * 0.3);
+            if (totalScore > bestScore) {
+              bestScore = totalScore;
+              bestMatch = lib;
+              bestType = 'TITOLO-ALT';
+            }
+          }
         }
         
-        if (bestScore >= 70 && bestMatch) {
+        // Soglia: 65% (più bassa per trovare più match)
+        if (bestScore >= 65 && bestMatch) {
           found.push({ 
             ...sp, 
             match: bestMatch, 
             score: Math.round(bestScore),
             matchType: bestType
           });
+          usedLibrary.add(userLibrary.indexOf(bestMatch));
         } else {
           missing.push(sp);
         }
@@ -301,7 +409,7 @@
       renderFound(); 
       renderMissing();
       
-      console.log(`✅ Match completato: ${found.length} trovate (${found.filter(f => f.matchType === 'ESATTO').length} esatte, ${found.filter(f => f.matchType === 'TITOLO').length} titolo, ${found.filter(f => f.matchType === 'SIMILE').length} simili), ${missing.length} mancanti`);
+      console.log(`✅ Match: ${found.length} trovate (${found.filter(f => f.matchType === 'ESATTO').length} esatte, ${found.filter(f => f.matchType === 'TITOLO').length} titolo, ${found.filter(f => f.matchType === 'SIMILE').length} simili), ${missing.length} mancanti`);
     }
 
     function renderFound() {
@@ -321,34 +429,34 @@
     document.getElementById('tabFound').onclick = () => { document.getElementById('foundList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden'); document.getElementById('tabFound').classList.add('active'); document.getElementById('tabMissing').classList.remove('active'); };
     document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
 
-    // ESPORTAZIONI
+    // =====================================================
+    // ESPORTAZIONI (con pulsanti per creare playlist)
+    // =====================================================
     document.getElementById('exportPresentM3U8Btn').onclick = () => {
       if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - PRESENTI\n# Generato da AURA DJ\n\n';
+      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - PRESENTI\n# Generato da AURA DJ - ' + new Date().toLocaleDateString('it-IT') + '\n# Tracce trovate nella tua libreria\n\n';
       lastMatched.found.forEach(t => { m += `#EXTINF:210,${t.match.artist} - ${t.match.title}\n${t.match.artist} - ${t.match.title}.mp3\n\n`; });
       dl(m, 'AURA_Presenti', 'audio/x-mpegurl');
     };
 
     document.getElementById('exportMissingM3U8Btn').onclick = () => {
       if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - MANCANTI\n# Generato da AURA DJ\n\n';
+      let m = '#EXTM3U\n# PLAYLIST: ' + lastMatched.playlistName + ' - MANCANTI\n# Generato da AURA DJ - ' + new Date().toLocaleDateString('it-IT') + '\n# Tracce da acquistare/aggiungere\n\n';
       lastMatched.missing.forEach(t => { m += `#EXTINF:210,${t.artist} - ${t.title}\n${t.artist} - ${t.title}.mp3\n\n`; });
       dl(m, 'AURA_Mancanti', 'audio/x-mpegurl');
     };
 
     document.getElementById('exportPresentTxtBtn').onclick = () => {
       if (!lastMatched.found.length) { alert('Nessuna traccia presente'); return; }
-      let txt = `TRACCE PRESENTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\n${'='.repeat(60)}\n\n`;
-      lastMatched.found.forEach((t, i) => { txt += `${i+1}. ${t.match.artist} - ${t.match.title} [${t.matchType}]\n`; });
-      txt += `\n${'='.repeat(60)}\nTotale: ${lastMatched.found.length} tracce\n`;
+      let txt = `TRACCE PRESENTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\nTotale: ${lastMatched.found.length} tracce\n${'='.repeat(60)}\n\n`;
+      lastMatched.found.forEach((t, i) => { txt += `${i+1}. ${t.match.artist} - ${t.match.title} [${t.matchType} ${t.score}%]\n`; });
       dl(txt, 'AURA_Presenti', 'text/plain');
     };
 
     document.getElementById('exportMissingTxtBtn').onclick = () => {
       if (!lastMatched.missing.length) { alert('Nessuna traccia mancante'); return; }
-      let txt = `TRACCE MANCANTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\n${'='.repeat(60)}\n\n`;
+      let txt = `TRACCE MANCANTI - ${lastMatched.playlistName}\nGenerato da AURA DJ il ${new Date().toLocaleDateString('it-IT')}\nTotale: ${lastMatched.missing.length} tracce da acquistare\n${'='.repeat(60)}\n\n`;
       lastMatched.missing.forEach((t, i) => { txt += `${i+1}. ${t.artist} - ${t.title}\n`; });
-      txt += `\n${'='.repeat(60)}\nTotale: ${lastMatched.missing.length} tracce da acquistare\n`;
       dl(txt, 'AURA_Mancanti', 'text/plain');
     };
 
@@ -358,7 +466,9 @@
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
     }
 
-    // CARICA FILE PLAYLIST
+    // =====================================================
+    // CARICA FILE PLAYLIST (CSV, TXT, M3U8)
+    // =====================================================
     const mdz = document.getElementById('matcherDropZone'), mfi = document.getElementById('matcherFileInput');
     if (mdz && mfi) {
       ['dragenter','dragover'].forEach(ev => mdz.addEventListener(ev, e => { e.preventDefault(); mdz.classList.add('border-purple-500'); }));
@@ -371,12 +481,19 @@
       document.getElementById('matcherDropText').innerText = 'Analisi...';
       const r = new FileReader();
       r.onload = e => {
-        const tracks = parseFile(e.target.result, file.name);
-        console.log('📄 File caricato:', file.name, '-', tracks.length, 'tracce trovate');
-        if (tracks.length > 0) {
-          console.log('Prima traccia:', tracks[0]);
+        let tracks = [];
+        if (file.name.endsWith('.csv')) {
+          tracks = parseCSVContent(e.target.result);
+        } else {
+          tracks = parseFile(e.target.result, file.name);
         }
-        if (!tracks.length) { alert('Nessuna traccia trovata. Verifica il formato del file.'); document.getElementById('matcherDropText').innerText = 'Trascina qui il file .m3u8, .txt o .csv'; return; }
+        
+        if (!tracks.length) { 
+          alert('Nessuna traccia trovata. Verifica il formato del file.'); 
+          document.getElementById('matcherDropText').innerText = 'Trascina qui il file .m3u8, .txt o .csv'; 
+          return; 
+        }
+        
         lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '');
         doMatch(tracks);
       };
@@ -386,72 +503,14 @@
     function parseFile(content, filename) {
       const tracks = [];
       const lines = content.split(/\r?\n/);
-      
-      if (filename.endsWith('.csv')) {
-        // Formato Exportify: Track URI, Track Name, Artist, Album, ...
-        // Oppure: Artist, Title, ...
-        const header = lines[0].toLowerCase();
-        console.log('📋 Header CSV:', header);
-        
-        // Rileva il formato
-        let artistCol = -1, titleCol = -1;
-        const cols = header.split(',').map(c => c.trim());
-        
-        if (header.includes('artist') && header.includes('track name')) {
-          // Formato Exportify
-          artistCol = cols.findIndex(c => c === 'artist');
-          titleCol = cols.findIndex(c => c === 'track name');
-        } else if (header.includes('artist') && header.includes('title')) {
-          // Formato standard
-          artistCol = cols.findIndex(c => c === 'artist');
-          titleCol = cols.findIndex(c => c === 'title');
-        } else {
-          // Assumi Artist, Title
-          artistCol = 0;
-          titleCol = 1;
-        }
-        
-        console.log('📊 Colonne rilevate: Artist=', artistCol, 'Title=', titleCol);
-        
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          
-          // Parsa CSV rispettando le virgolette
-          const cols = [];
-          let current = '';
-          let inQuotes = false;
-          for (let char of line) {
-            if (char === '"') {
-              inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-              cols.push(current.trim());
-              current = '';
-            } else {
-              current += char;
-            }
-          }
-          cols.push(current.trim());
-          
-          if (artistCol >= 0 && titleCol >= 0 && cols[artistCol] && cols[titleCol]) {
-            const artist = cols[artistCol];
-            const title = cols[titleCol];
-            tracks.push({ artist, title, original: artist + ' - ' + title });
-          }
-        }
-      } else {
-        // TXT o M3U8
-        for (let line of lines) {
-          line = line.trim();
-          if (!line || line.startsWith('#')) continue;
-          const parts = line.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
-          if (parts.length < 2) continue;
-          let artist = parts[0], title = parts[1];
-          if (parts.length > 2) { artist = parts[parts.length - 1]; title = parts.slice(0, -1).join(' - '); }
-          if (artist && title) tracks.push({ artist, title, original: line });
-        }
+      for (let line of lines) {
+        line = line.trim(); if (!line || line.startsWith('#')) continue;
+        const parts = line.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
+        if (parts.length < 2) continue;
+        let artist = parts[0], title = parts[1];
+        if (parts.length > 2) { artist = parts[parts.length - 1]; title = parts.slice(0, -1).join(' - '); }
+        if (artist && title) tracks.push({ artist, title, original: line });
       }
-      
       return tracks;
     }
   }

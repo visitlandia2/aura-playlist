@@ -61,20 +61,17 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <h2 class="text-xl font-semibold mb-3 flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5 text-aura-gold"></i> 3. Track Matcher</h2>
                 <p class="text-slate-400 text-sm mb-4">Confronta una playlist Spotify o un file esportato con la tua libreria</p>
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-4">
-                    <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY</label>
-                    <button type="button" id="authSpotifyBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-lg mb-3">🔗 Autorizza Spotify (fallo una volta sola)</button>
-                    <div id="tokenStatus" class="mt-2 p-2 bg-slate-800 rounded text-xs text-slate-400">Token: caricamento...</div>
-                    <div class="flex gap-2 mt-3">
+                    <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY (Solo playlist PUBBLICHE)</label>
+                    <div class="flex gap-2">
                         <input type="text" id="spotifyLink" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-aura-gold outline-none">
                         <button type="button" id="fetchSpotifyBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i> Carica</button>
                     </div>
-                    <p class="text-slate-500 text-xs mt-2">💡 La playlist deve essere PUBBLICA su Spotify</p>
-                    <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Caricamento...</span></div>
+                    <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Lettura playlist pubblica...</span></div>
                     <div id="spotifyError" class="hidden mt-3 text-red-400 text-sm"></div>
                 </div>
                 <div class="flex items-center gap-2 my-4"><div class="flex-1 h-px bg-slate-700"></div><span class="text-slate-500 text-sm">oppure</span><div class="flex-1 h-px bg-slate-700"></div></div>
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
-                    <label class="text-xs text-aura-gold font-bold mb-2 block">📁 METODO 2: CARICA FILE</label>
+                    <label class="text-xs text-aura-gold font-bold mb-2 block">📁 METODO 2: CARICA FILE (CSV, TXT, M3U8)</label>
                     <div id="matcherDropZone" class="border-2 border-dashed border-slate-600 rounded-xl p-6 text-center hover:border-aura-gold/50 cursor-pointer relative">
                         <input type="file" id="matcherFileInput" accept=".txt,.csv,.m3u8,.m3u" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
                         <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500 mx-auto mb-3"></i>

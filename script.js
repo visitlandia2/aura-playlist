@@ -179,21 +179,14 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // LETTURA PLAYLIST SPOTIFY + PLAYER EMBED
+    // LETTURA PLAYLIST SPOTIFY
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
-      const playerContainer = document.getElementById('spotifyPlayerContainer');
-      const player = document.getElementById('spotifyPlayer');
-      
       if (!link) { alert('Incolla il link Spotify'); return; }
       const m = link.match(/playlist\/([a-zA-Z0-9]+)/);
       if (!m) { alert('Link non valido'); return; }
       const pid = m[1];
-      
-      // Mostra il player Spotify embed
-      player.src = `https://open.spotify.com/embed/playlist/${pid}?utm_source=generator&theme=0`;
-      playerContainer.classList.remove('hidden');
       
       ld.classList.remove('hidden'); 
       er.classList.add('hidden');
@@ -224,7 +217,7 @@
         doMatch(tracks);
       } catch (e) {
         er.classList.remove('hidden');
-        er.innerHTML = `❌ ${e.message}<br><span class="text-xs text-slate-400">Il player funziona comunque. Per il match, usa il Metodo 2 (carica file CSV).</span>`;
+        er.innerHTML = `❌ ${e.message}`;
       } finally { 
         ld.classList.add('hidden'); 
       }
@@ -337,4 +330,10 @@
 
     function dl(content, filename, mimeType) {
       const b = new Blob([content], { type: mimeType }), u = URL.createObjectURL(b), a = document.createElement('a');
-      a.href = u; a.download = filename + '_' + new Date().toISOString().split('T')[0] + (mimeType === 'audio/x-mpegurl' ? '.m3u8' : '.txt
+      a.href = u; a.download = filename + '_' + new Date().toISOString().split('T')[0] + (mimeType === 'audio/x-mpegurl' ? '.m3u8' : '.txt');
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();

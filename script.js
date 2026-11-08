@@ -189,14 +189,6 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // FIX: prova la richiesta reale, se fallisce con 401 fai refresh
-    async function getValidToken() {
-      let accessToken = localStorage.getItem('spotify_access_token');
-      let refreshToken = localStorage.getItem('spotify_refresh_token');
-      if (!accessToken || !refreshToken) return null;
-      return accessToken; // Il token dura 1 ora, usalo direttamente
-    }
-
     async function refreshAccessToken() {
       const refreshToken = localStorage.getItem('spotify_refresh_token');
       if (!refreshToken) return null;
@@ -210,6 +202,21 @@
       } catch(e) {}
       return null;
     }
+
+    function updateTokenStatus() {
+      const token = localStorage.getItem('spotify_access_token');
+      const statusEl = document.getElementById('tokenStatus');
+      if (statusEl) {
+        if (token) {
+          statusEl.innerText = '✅ Token presente: ' + token.substring(0, 30) + '...';
+          statusEl.className = 'mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded text-xs text-green-300';
+        } else {
+          statusEl.innerText = '❌ Token non presente. Clicca "Autorizza Spotify".';
+          statusEl.className = 'mt-2 p-2 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-300';
+        }
+      }
+    }
+    updateTokenStatus();
 
     document.getElementById('authSpotifyBtn').onclick = function() {
       window.location.href = WORKER_URL + '/auth';
@@ -225,7 +232,7 @@
       ld.classList.remove('hidden'); er.classList.add('hidden');
       
       try {
-        let token = await getValidToken();
+        let token = localStorage.getItem('spotify_access_token');
         if (!token) {
           er.classList.remove('hidden');
           er.innerHTML = '❌ Devi prima autorizzare Spotify.';
@@ -237,7 +244,6 @@
           headers: { 'Authorization': 'Bearer ' + token }
         });
         
-        // Se 401, il token è scaduto → refresh
         if (response.status === 401) {
           token = await refreshAccessToken();
           if (!token) {

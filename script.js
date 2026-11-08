@@ -164,19 +164,19 @@
     }
 
     // =====================================================
-    // NORMALIZZAZIONE SUPER AGGRESSIVA
+    // NORMALIZZAZIONE ULTRA-AGGRESSIVA
     // =====================================================
     function normalizeText(text) {
       if (!text) return '';
       let t = text.toString().toLowerCase().trim();
       
-      // Rimuovi tutto tra parentesi
+      // Rimuovi TUTTO tra parentesi quadre, tonde, ecc.
       t = t.replace(/\([^)]*\)/g, '');
       t = t.replace(/\[[^\]]*\]/g, '');
+      t = t.replace(/{[^}]*}/g, '');
       
       // Rimuovi punteggiatura
-      t = t.replace(/[''""`´]/g, '');
-      t = t.replace(/[~^*!@#$%&]/g, '');
+      t = t.replace(/[''""`´!@#$%^&*]/g, '');
       t = t.replace(/[^\w\s]/g, ' ');
       
       // Gestisci trattini
@@ -191,18 +191,28 @@
       t = t.replace(/\s*x\s+/gi, ' ');
       
       // Rimuovi TUTTI i suffissi di versione
-      t = t.replace(/\s*(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remix|remastered|remaster|mix|edit|version|live|acoustic|instrumental|single|new|cut)\s*$/gi, ' ');
-      t = t.replace(/\s*(2019|2020|2021|2022|2023|2024|2025)\s*$/g, ' ');
-      t = t.replace(/\s*(official\s*video|official\s*audio|hq|hd)\s*$/gi, ' ');
+      const suffixes = [
+        'radio edit', 'album version', 'original mix', 'extended mix', 
+        'club mix', 'remix', 'remastered', 'remaster', 'mix', 'edit', 
+        'version', 'live', 'acoustic', 'instrumental', 'single', 'new', 
+        'cut', 'radio', 'album', 'original', 'extended', 'club',
+        '2019', '2020', '2021', '2022', '2023', '2024', '2025',
+        'official video', 'official audio', 'hq', 'hd', 'video', 'audio'
+      ];
       
-      // Normalizza spazi
+      suffixes.forEach(suffix => {
+        const regex = new RegExp(`\\s*${suffix}\\s*`, 'gi');
+        t = t.replace(regex, ' ');
+      });
+      
+      // Normalizza spazi multipli
       t = t.replace(/\s+/g, ' ').trim();
       
       return t;
     }
 
     // =====================================================
-    // SIMILARITÀ AGGRESSIVA
+    // SIMILARITÀ ULTRA-PERMISSIVA
     // =====================================================
     function calculateSimilarity(a, b) {
       if (!a || !b) return 0;
@@ -235,7 +245,7 @@
     }
 
     // =====================================================
-    // PARSER CSV
+    // PARSER CSV SPOTIFY
     // =====================================================
     function parseCSVLine(line) {
       const cols = [];
@@ -326,11 +336,11 @@
     }
 
     // =====================================================
-    // MATCHING SUPER AGGRESSIVO (come Lexicon DJ)
+    // MATCHING ULTRA-AGGRESSIVO (come Lexicon DJ)
     // =====================================================
     function doMatch(playlistTracks) {
       if (!userLibrary.length) { 
-        alert('⚠️ Carica prima la libreria!'); 
+        alert('️ Carica prima la libreria!'); 
         return; 
       }
       
@@ -343,21 +353,16 @@
       // Crea indici per ricerca veloce
       const libraryByTitle = new Map();
       const libraryByArtist = new Map();
-      const libraryByNormalized = new Map();
       
       userLibrary.forEach((track, idx) => {
         const titleNorm = normalizeText(track.title);
         const artistNorm = normalizeText(track.artist);
-        const combinedNorm = artistNorm + ' ' + titleNorm;
         
         if (!libraryByTitle.has(titleNorm)) libraryByTitle.set(titleNorm, []);
         libraryByTitle.get(titleNorm).push({ track, idx });
         
         if (!libraryByArtist.has(artistNorm)) libraryByArtist.set(artistNorm, []);
         libraryByArtist.get(artistNorm).push({ track, idx });
-        
-        if (!libraryByNormalized.has(combinedNorm)) libraryByNormalized.set(combinedNorm, []);
-        libraryByNormalized.get(combinedNorm).push({ track, idx });
       });
       
       for (let playlistTrack of playlistTracks) {
@@ -368,13 +373,14 @@
         
         const plArtistNorm = normalizeText(playlistTrack.artist);
         const plTitleNorm = normalizeText(playlistTrack.title);
-        const plCombinedNorm = plArtistNorm + ' ' + plTitleNorm;
         
-        // STRATEGIA 1: Match ESATTO combinato
-        if (libraryByNormalized.has(plCombinedNorm)) {
-          const candidates = libraryByNormalized.get(plCombinedNorm);
+        // STRATEGIA 1: Match ESATTO titolo + artista
+        if (libraryByTitle.has(plTitleNorm)) {
+          const candidates = libraryByTitle.get(plTitleNorm);
           for (const c of candidates) {
-            if (!usedIndexes.has(c.idx)) {
+            if (usedIndexes.has(c.idx)) continue;
+            const libArtistNorm = normalizeText(c.track.artist);
+            if (libArtistNorm === plArtistNorm) {
               bestMatch = c.track;
               bestScore = 100;
               bestType = 'ESATTO';
@@ -390,15 +396,15 @@
           continue;
         }
         
-        // STRATEGIA 2: Match titolo esatto, artista simile (>=30%)
+        // STRATEGIA 2: Match titolo esatto, artista simile (>=20%)
         if (libraryByTitle.has(plTitleNorm)) {
           const candidates = libraryByTitle.get(plTitleNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
             const libArtistNorm = normalizeText(c.track.artist);
             const artistSim = calculateSimilarity(plArtistNorm, libArtistNorm);
-            if (artistSim >= 30) {
-              const score = 85 + (artistSim / 10);
+            if (artistSim >= 20) {  // MOLTO permissivo!
+              const score = 80 + (artistSim / 10);
               if (score > bestScore) {
                 bestScore = score;
                 bestMatch = c.track;
@@ -409,15 +415,15 @@
           }
         }
         
-        // STRATEGIA 3: Match artista esatto, titolo simile (>=50%)
+        // STRATEGIA 3: Match artista esatto, titolo simile (>=40%)
         if (libraryByArtist.has(plArtistNorm)) {
           const candidates = libraryByArtist.get(plArtistNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
             const libTitleNorm = normalizeText(c.track.title);
             const titleSim = calculateSimilarity(plTitleNorm, libTitleNorm);
-            if (titleSim >= 50) {
-              const score = 80 + (titleSim / 10);
+            if (titleSim >= 40) {  // MOLTO permissivo!
+              const score = 75 + (titleSim / 10);
               if (score > bestScore) {
                 bestScore = score;
                 bestMatch = c.track;
@@ -428,7 +434,7 @@
           }
         }
         
-        // STRATEGIA 4: Fuzzy match generale (soglia 35%)
+        // STRATEGIA 4: Fuzzy match generale (soglia 25%)
         if (bestScore < 70) {
           for (let libIdx = 0; libIdx < userLibrary.length; libIdx++) {
             if (usedIndexes.has(libIdx)) continue;
@@ -441,7 +447,7 @@
             const artistSim = calculateSimilarity(plArtistNorm, libArtistNorm);
             
             // Titolo molto simile + artista simile
-            if (titleSim >= 60 && artistSim >= 30) {
+            if (titleSim >= 50 && artistSim >= 20) {
               const score = (titleSim * 0.6) + (artistSim * 0.4);
               if (score > bestScore) {
                 bestScore = score;
@@ -452,7 +458,7 @@
             }
             
             // Solo titolo altissimo
-            if (titleSim >= 80 && artistSim >= 20) {
+            if (titleSim >= 70 && artistSim >= 15) {
               const score = (titleSim * 0.75) + (artistSim * 0.25);
               if (score > bestScore) {
                 bestScore = score;
@@ -464,8 +470,8 @@
           }
         }
         
-        // Soglia finale: 40% (molto permissiva)
-        if (bestScore >= 40 && bestMatch) {
+        // Soglia finale: 30% (ULTRA permissiva)
+        if (bestScore >= 30 && bestMatch) {
           found.push({ 
             ...playlistTrack, 
             match: bestMatch, 
@@ -511,9 +517,7 @@
     document.getElementById('tabFound').onclick = () => { document.getElementById('foundList').classList.remove('hidden'); document.getElementById('missingList').classList.add('hidden'); document.getElementById('tabFound').classList.add('active'); document.getElementById('tabMissing').classList.remove('active'); };
     document.getElementById('tabMissing').onclick = () => { document.getElementById('foundList').classList.add('hidden'); document.getElementById('missingList').classList.remove('hidden'); document.getElementById('tabMissing').classList.add('active'); document.getElementById('tabFound').classList.remove('active'); };
 
-    // =====================================================
     // ESPORTAZIONI CON NOME PLAYLIST
-    // =====================================================
     function getExportName(type) {
       return `AURA ${lastMatched.playlistName} - ${type}`;
     }

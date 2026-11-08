@@ -11,6 +11,18 @@
     let lastMatched = { found: [], missing: [], spotifyTracks: [], playlistName: 'Playlist' };
     const WORKER_URL = 'https://aura-spotify-proxy.visitlandia2.workers.dev';
 
+    // Controlla se c'è un token nell'URL (ritorno da autorizzazione Spotify)
+    const urlParams = new URLSearchParams(window.location.search);
+    const accessToken = urlParams.get('spotify_access');
+    const refreshToken = urlParams.get('spotify_refresh');
+    
+    if (accessToken && refreshToken) {
+      localStorage.setItem('spotify_access_token', accessToken);
+      localStorage.setItem('spotify_refresh_token', refreshToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      alert('✅ Autorizzazione Spotify completata! Ora puoi caricare playlist.');
+    }
+
     function showMsg(t, type) {
       const m = document.getElementById('authMessage');
       if (!m) return;
@@ -179,7 +191,29 @@
       return (c / Math.max(w1.length, w2.length)) * 100;
     }
 
-    // METODO 1: LETTURA DIRETTA SPOTIFY CON API UFFICIALI
+    // Aggiorna stato token Spotify
+    function updateSpotifyStatus() {
+      const token = localStorage.getItem('spotify_access_token');
+      const statusEl = document.getElementById('spotifyStatus');
+      if (statusEl) {
+        if (token) {
+          statusEl.innerHTML = '<span class="text-green-400">✅ Autorizzato</span>';
+        } else {
+          statusEl.innerHTML = '<span class="text-slate-400">Non autorizzato</span>';
+        }
+      }
+    }
+    updateSpotifyStatus();
+
+    // Pulsante Autorizza Spotify
+    const authSpotifyBtn = document.getElementById('authSpotifyBtn');
+    if (authSpotifyBtn) {
+      authSpotifyBtn.onclick = function() {
+        window.location.href = WORKER_URL + '/auth';
+      };
+    }
+
+    // METODO 1: LETTURA PLAYLIST SPOTIFY CON TOKEN UTENTE
     document.getElementById('fetchSpotifyBtn').onclick = async function() {
       const link = document.getElementById('spotifyLink').value.trim();
       const ld = document.getElementById('spotifyLoading'), er = document.getElementById('spotifyError');
@@ -192,17 +226,50 @@
       er.classList.add('hidden');
       
       try {
-        const response = await fetch(WORKER_URL + '/playlist?id=' + pid);
-        const text = await response.text();
+        let token = localStorage.getItem('spotify_access_token');
         
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch(e) {
-          throw new Error('Risposta non valida dal server. Riprova.');
+        if (!token) {
+          er.classList.remove('hidden');
+          er.innerHTML = '❌ Devi prima autorizzare Spotify. Clicca "🔗 Autorizza Spotify" qui sopra.';
+          ld.classList.add('hidden');
+          return;
         }
         
-        if (data.error) throw new Error(data.error);
+        // Prova con il token corrente
+        let response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        // Se 401, il token è scaduto → refresh
+        if (response.status === 401) {
+          const refreshToken = localStorage.getItem('spotify_refresh_token');
+          if (refreshToken) {
+            const refreshRes = await fetch(WORKER_URL + '/refresh?refresh=' + refreshToken);
+            const refreshData = await refreshRes.json();
+            
+            if (refreshData.access_token) {
+              localStorage.setItem('spotify_access_token', refreshData.access_token);
+              token = refreshData.access_token;
+              
+              // Riprova con il nuovo token
+              response = await fetch(WORKER_URL + '/playlist?id=' + pid, {
+                headers: { 'Authorization': 'Bearer ' + token }
+              });
+            } else {
+              er.classList.remove('hidden');
+              er.innerHTML = '❌ Token scaduto. Clicca "🔗 Autorizza Spotify" per ri-autorizzare.';
+              ld.classList.add('hidden');
+              return;
+            }
+          }
+        }
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'HTTP ' + response.status);
+        }
+        
+        const data = await response.json();
         if (!data.items || data.items.length === 0) throw new Error('Nessuna traccia trovata.');
         
         const tracks = data.items.map(i => ({

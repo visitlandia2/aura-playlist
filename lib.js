@@ -17,18 +17,16 @@ const supabase = {
     this._loadUsers();
     if (!email || !password) throw new Error('Inserisci email e password');
     if (password.length < 6) throw new Error('Password minimo 6 caratteri');
-    if (this.users[email]) throw new Error('Utente già esistente. Clicca Accedi.');
+    if (this.users[email]) throw new Error('Utente già esistente');
     
-    const token = btoa(email + ':' + Date.now());
     this.users[email] = { 
       email: email, 
-      password: btoa(password), 
-      token: token, 
-      libraries: {} 
+      password: btoa(password),
+      createdAt: new Date().toISOString()
     };
     localStorage.setItem('aura_users', JSON.stringify(this.users));
-    this.session = token;
-    localStorage.setItem('aura_session', token);
+    this.session = email;
+    localStorage.setItem('aura_session', email);
     return { user: { email: email } };
   },
   
@@ -37,11 +35,11 @@ const supabase = {
     if (!email || !password) throw new Error('Inserisci email e password');
     
     const user = this.users[email];
-    if (!user) throw new Error('Utente non trovato. Registrati prima.');
-    if (user.password !== btoa(password)) throw new Error('Password errata.');
+    if (!user) throw new Error('Utente non trovato');
+    if (user.password !== btoa(password)) throw new Error('Password errata');
     
-    this.session = user.token;
-    localStorage.setItem('aura_session', this.session);
+    this.session = email;
+    localStorage.setItem('aura_session', email);
     return { user: { email: email } };
   },
   
@@ -57,27 +55,19 @@ const supabase = {
   getUser() {
     const session = this.getSession();
     if (!session) return null;
-    try {
-      const decoded = atob(session);
-      const email = decoded.split(':')[0];
-      return { email: email };
-    } catch(e) { 
-      return null; 
-    }
+    return { email: session };
   },
   
   isLoggedIn() { 
     const session = this.getSession();
     if (!session) return false;
-    const user = this.getUser();
-    if (!user || !user.email) return false;
-    return !!this.users[user.email];
+    return !!this.users[session];
   },
   
   async saveLibrary(tracks, name) {
     const user = this.getUser();
     if (!user || !user.email) throw new Error('Non autenticato');
-    if (!this.users[user.email]) throw new Error('Utente non trovato');
+    if (!this.users[user.email]) this.users[user.email] = { libraries: {} };
     if (!this.users[user.email].libraries) this.users[user.email].libraries = {};
     this.users[user.email].libraries[name] = { 
       tracks: tracks, 

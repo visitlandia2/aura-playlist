@@ -62,12 +62,11 @@ tailwind.config = { theme: { extend: { colors: { aura: { dark: '#0B0F19', panel:
                 <p class="text-slate-400 text-sm mb-4">Confronta una playlist Spotify o un file esportato con la tua libreria</p>
                 <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-4">
                     <label class="text-xs text-aura-gold font-bold mb-2 block">🎵 METODO 1: LINK SPOTIFY</label>
-                    <button type="button" id="authSpotifyBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-lg mb-3">🔗 Autorizza Spotify (fallo una volta sola)</button>
-                    <div class="text-xs mb-3"><span id="spotifyStatus">Non autorizzato</span></div>
                     <div class="flex gap-2">
                         <input type="text" id="spotifyLink" placeholder="https://open.spotify.com/playlist/..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-aura-gold outline-none">
                         <button type="button" id="fetchSpotifyBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i> Carica</button>
                     </div>
+                    <div id="spotifyPlayer" class="hidden mt-4"></div>
                     <div id="spotifyLoading" class="hidden mt-3 text-center"><div class="inline-block w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div><span class="text-slate-400 text-sm ml-2">Lettura playlist...</span></div>
                     <div id="spotifyError" class="hidden mt-3 text-red-400 text-sm"></div>
                 </div>

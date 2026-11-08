@@ -164,75 +164,77 @@
     }
 
     // =====================================================
-    // LEVENSHTEIN DISTANCE (distanza di editing)
+    // NORMALIZZAZIONE TITOLO (aggressiva ma corretta)
     // =====================================================
-    function levenshtein(a, b) {
-      const matrix = [];
-      for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-      for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-      
-      for (let i = 1; i <= b.length; i++) {
-        for (let j = 1; j <= a.length; j++) {
-          if (b.charAt(i-1) === a.charAt(j-1)) {
-            matrix[i][j] = matrix[i-1][j-1];
-          } else {
-            matrix[i][j] = Math.min(
-              matrix[i-1][j-1] + 1,
-              matrix[i][j-1] + 1,
-              matrix[i-1][j] + 1
-            );
-          }
-        }
-      }
-      return matrix[b.length][a.length];
-    }
-
-    function similarity(a, b) {
-      if (!a || !b) return 0;
-      a = a.toLowerCase().trim();
-      b = b.toLowerCase().trim();
-      if (a === b) return 100;
-      const longer = a.length > b.length ? a : b;
-      const shorter = a.length > b.length ? b : a;
-      if (longer.length === 0) return 100;
-      const distance = levenshtein(longer, shorter);
-      return ((longer.length - distance) / longer.length) * 100;
-    }
-
-    // =====================================================
-    // NORMALIZZAZIONE CONSERVATIVA
-    // =====================================================
-    function normalizeText(text) {
-      if (!text) return '';
-      let t = text.toString().toLowerCase().trim();
+    function normalizeTitle(title) {
+      if (!title) return '';
+      let t = title.toString().toLowerCase().trim();
       
       // Rimuovi contenuto tra parentesi
-      t = t.replace(/\([^)]*\)/g, '').trim();
-      t = t.replace(/\[[^\]]*\]/g, '').trim();
+      t = t.replace(/\([^)]*\)/g, ' ');
+      t = t.replace(/\[[^\]]*\]/g, ' ');
       
       // Rimuovi punteggiatura
       t = t.replace(/[''""`´!@#$%^&*]/g, '');
       
-      // Gestisci trattini
-      t = t.replace(/\s*[-–—]\s*/g, ' ');
+      // Sostituisci trattini con spazio
+      t = t.replace(/[-–—]/g, ' ');
       
-      // Sostituisci & con "and"
+      // & diventa "and"
       t = t.replace(/\s*&\s*/g, ' and ');
       
-      // Rimuovi feat, featuring, vs, x
+      // Rimuovi feat/ft/featuring/vs/x
       t = t.replace(/\s*(feat\.?|featuring|ft\.?)\s+/gi, ' ');
       t = t.replace(/\s*vs\.?\s+/gi, ' ');
       t = t.replace(/\s*x\s+/gi, ' ');
       
-      // Rimuovi SOLO suffissi finali (non nel mezzo!)
-      t = t.replace(/\s*(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remix|remastered|remaster|mix|edit|version|live|acoustic|instrumental|single|new|cut)\s*$/gi, ' ').trim();
-      t = t.replace(/\s*(2019|2020|2021|2022|2023|2024|2025)\s*$/g, ' ').trim();
-      t = t.replace(/\s*(official\s*video|official\s*audio|hq|hd|video|audio)\s*$/gi, ' ').trim();
+      // Rimuovi suffissi di versione (solo alla fine!)
+      t = t.replace(/\s*(radio\s*edit|album\s*(mix|version)|original\s*mix|extended\s*mix|club\s*mix|remix|remastered|remaster)\s*$/gi, ' ');
+      t = t.replace(/\s*(mix|edit|version|live|acoustic|instrumental|single|new|cut)\s*$/gi, ' ');
+      t = t.replace(/\s*(20\d{2}|20\d{2}\s*remaster)\s*$/g, ' ');
+      t = t.replace(/\s*(official\s*video|official\s*audio|hq|hd|video|audio)\s*$/gi, ' ');
       
       // Normalizza spazi
       t = t.replace(/\s+/g, ' ').trim();
       
       return t;
+    }
+
+    function normalizeArtist(artist) {
+      if (!artist) return '';
+      let t = artist.toString().toLowerCase().trim();
+      t = t.replace(/[''""`´]/g, '');
+      t = t.replace(/\s*&\s*/g, ' and ');
+      t = t.replace(/\s*(feat\.?|featuring|ft\.?)\s+/gi, ' ');
+      t = t.replace(/\s*vs\.?\s+/gi, ' ');
+      t = t.replace(/\s*x\s+/gi, ' ');
+      t = t.replace(/\s+/g, ' ').trim();
+      return t;
+    }
+
+    // =====================================================
+    // SIMILARITÀ PAROLA PER PAROLA (veloce)
+    // =====================================================
+    function wordSimilarity(a, b) {
+      if (!a || !b) return 0;
+      if (a === b) return 100;
+      
+      const wordsA = a.split(' ').filter(w => w.length > 2);
+      const wordsB = b.split(' ').filter(w => w.length > 2);
+      
+      if (wordsA.length === 0 || wordsB.length === 0) return 0;
+      
+      let matches = 0;
+      for (let wordA of wordsA) {
+        for (let wordB of wordsB) {
+          if (wordA === wordB || wordA.includes(wordB) || wordB.includes(wordA)) {
+            matches++;
+            break;
+          }
+        }
+      }
+      
+      return (matches / Math.max(wordsA.length, wordsB.length)) * 100;
     }
 
     // =====================================================
@@ -322,12 +324,11 @@
       }
       
       console.log('✅ Parse CSV:', tracks.length, 'tracce trovate');
-      if (tracks.length > 0) console.log('Esempio:', tracks[0]);
       return tracks;
     }
 
     // =====================================================
-    // MATCHING PERMISSIVO (come richiesto)
+    // MATCHING VELOCE CON INDICI
     // =====================================================
     function doMatch(playlistTracks) {
       if (!userLibrary.length) { 
@@ -337,17 +338,13 @@
       
       console.log('🔍 Matching:', playlistTracks.length, 'vs', userLibrary.length);
       
-      const found = [];
-      const missing = [];
-      const usedIndexes = new Set();
-      
-      // Crea indici
+      // CREA INDICI per ricerca veloce O(1)
       const libraryByTitle = new Map();
       const libraryByArtist = new Map();
       
       userLibrary.forEach((track, idx) => {
-        const titleNorm = normalizeText(track.title);
-        const artistNorm = normalizeText(track.artist);
+        const titleNorm = normalizeTitle(track.title);
+        const artistNorm = normalizeArtist(track.artist);
         
         if (!libraryByTitle.has(titleNorm)) libraryByTitle.set(titleNorm, []);
         libraryByTitle.get(titleNorm).push({ track, idx });
@@ -356,21 +353,36 @@
         libraryByArtist.get(artistNorm).push({ track, idx });
       });
       
+      console.log('📊 Indici creati:', libraryByTitle.size, 'titoli unici,', libraryByArtist.size, 'artisti unici');
+      
+      const found = [];
+      const missing = [];
+      const usedIndexes = new Set();
+      
+      // Mostra progresso
+      const total = playlistTracks.length;
+      let processed = 0;
+      
       for (let playlistTrack of playlistTracks) {
+        processed++;
+        if (processed % 100 === 0) {
+          console.log(`⏳ Progresso: ${processed}/${total} (${Math.round(processed/total*100)}%)`);
+        }
+        
         let bestMatch = null;
         let bestScore = 0;
         let bestType = '';
         let bestLibIndex = -1;
         
-        const plArtistNorm = normalizeText(playlistTrack.artist);
-        const plTitleNorm = normalizeText(playlistTrack.title);
+        const plTitleNorm = normalizeTitle(playlistTrack.title);
+        const plArtistNorm = normalizeArtist(playlistTrack.artist);
         
-        // STRATEGIA 1: Match ESATTO titolo + artista normalizzati
+        // STRATEGIA 1: Match ESATTO titolo + artista
         if (libraryByTitle.has(plTitleNorm)) {
           const candidates = libraryByTitle.get(plTitleNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
-            const libArtistNorm = normalizeText(c.track.artist);
+            const libArtistNorm = normalizeArtist(c.track.artist);
             if (libArtistNorm === plArtistNorm) {
               bestMatch = c.track;
               bestScore = 100;
@@ -387,15 +399,15 @@
           continue;
         }
         
-        // STRATEGIA 2: Titolo identico, artista simile (>=20%) - PERMISSIVO
+        // STRATEGIA 2: Titolo identico, artista simile (>=40%)
         if (libraryByTitle.has(plTitleNorm)) {
           const candidates = libraryByTitle.get(plTitleNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
-            const libArtistNorm = normalizeText(c.track.artist);
-            const artistSim = similarity(plArtistNorm, libArtistNorm);
-            if (artistSim >= 20) {
-              const score = 80 + (artistSim / 10);
+            const libArtistNorm = normalizeArtist(c.track.artist);
+            const artistSim = wordSimilarity(plArtistNorm, libArtistNorm);
+            if (artistSim >= 40) {
+              const score = 85 + (artistSim / 10);
               if (score > bestScore) {
                 bestScore = score;
                 bestMatch = c.track;
@@ -406,15 +418,15 @@
           }
         }
         
-        // STRATEGIA 3: Artista identico, titolo simile (>=40%) - PERMISSIVO
+        // STRATEGIA 3: Artista identico, titolo simile (>=60%)
         if (libraryByArtist.has(plArtistNorm)) {
           const candidates = libraryByArtist.get(plArtistNorm);
           for (const c of candidates) {
             if (usedIndexes.has(c.idx)) continue;
-            const libTitleNorm = normalizeText(c.track.title);
-            const titleSim = similarity(plTitleNorm, libTitleNorm);
-            if (titleSim >= 40) {
-              const score = 75 + (titleSim / 10);
+            const libTitleNorm = normalizeTitle(c.track.title);
+            const titleSim = wordSimilarity(plTitleNorm, libTitleNorm);
+            if (titleSim >= 60) {
+              const score = 80 + (titleSim / 10);
               if (score > bestScore) {
                 bestScore = score;
                 bestMatch = c.track;
@@ -425,44 +437,41 @@
           }
         }
         
-        // STRATEGIA 4: Fuzzy match generale - MOLTO PERMISSIVO
-        if (bestScore < 70) {
-          for (let libIdx = 0; libIdx < userLibrary.length; libIdx++) {
-            if (usedIndexes.has(libIdx)) continue;
+        // STRATEGIA 4: Fuzzy match (solo se bestScore < 75)
+        if (bestScore < 75) {
+          // Cerca solo tra candidati con titolo simile (non tutta la libreria!)
+          const titleWords = plTitleNorm.split(' ').filter(w => w.length > 3);
+          if (titleWords.length > 0) {
+            const firstWord = titleWords[0];
             
-            const libTrack = userLibrary[libIdx];
-            const libTitleNorm = normalizeText(libTrack.title);
-            const libArtistNorm = normalizeText(libTrack.artist);
-            
-            const titleSim = similarity(plTitleNorm, libTitleNorm);
-            const artistSim = similarity(plArtistNorm, libArtistNorm);
-            
-            // Titolo simile + artista simile
-            if (titleSim >= 50 && artistSim >= 20) {
-              const score = (titleSim * 0.6) + (artistSim * 0.4);
-              if (score > bestScore) {
-                bestScore = score;
-                bestMatch = libTrack;
-                bestType = 'SIMILE';
-                bestLibIndex = libIdx;
-              }
-            }
-            
-            // Solo titolo alto
-            if (titleSim >= 70 && artistSim >= 15) {
-              const score = (titleSim * 0.75) + (artistSim * 0.25);
-              if (score > bestScore) {
-                bestScore = score;
-                bestMatch = libTrack;
-                bestType = 'TITOLO-ALT';
-                bestLibIndex = libIdx;
+            // Cerca nella libreria tracce con lo stesso primo parola del titolo
+            for (let [libTitleNorm, candidates] of libraryByTitle) {
+              if (libTitleNorm.startsWith(firstWord) || libTitleNorm.includes(firstWord)) {
+                for (const c of candidates) {
+                  if (usedIndexes.has(c.idx)) continue;
+                  const libTitleNorm2 = normalizeTitle(c.track.title);
+                  const libArtistNorm = normalizeArtist(c.track.artist);
+                  
+                  const titleSim = wordSimilarity(plTitleNorm, libTitleNorm2);
+                  const artistSim = wordSimilarity(plArtistNorm, libArtistNorm);
+                  
+                  if (titleSim >= 70 && artistSim >= 50) {
+                    const score = (titleSim * 0.6) + (artistSim * 0.4);
+                    if (score > bestScore) {
+                      bestScore = score;
+                      bestMatch = c.track;
+                      bestType = 'SIMILE';
+                      bestLibIndex = c.idx;
+                    }
+                  }
+                }
               }
             }
           }
         }
         
-        // Soglia finale: 30% (MOLTO permissiva)
-        if (bestScore >= 30 && bestMatch) {
+        // Soglia finale: 60%
+        if (bestScore >= 60 && bestMatch) {
           found.push({ 
             ...playlistTrack, 
             match: bestMatch, 
@@ -475,6 +484,8 @@
         }
       }
       
+      console.log(`✅ Completato: ${processed}/${total}`);
+      
       lastMatched = { found, missing, playlistName: lastMatched.playlistName };
       document.getElementById('matcherResults').classList.remove('hidden');
       document.getElementById('mTotal').innerText = playlistTracks.length;
@@ -486,9 +497,9 @@
       const exact = found.filter(f => f.matchType === 'ESATTO').length;
       const title = found.filter(f => f.matchType === 'TITOLO').length;
       const artist = found.filter(f => f.matchType === 'ARTISTA').length;
-      const similar = found.filter(f => f.matchType === 'SIMILE' || f.matchType === 'TITOLO-ALT').length;
+      const similar = found.filter(f => f.matchType === 'SIMILE').length;
       
-      console.log(`✅ Risultati: ${found.length}/${playlistTracks.length} (${exact} esatti, ${title} titolo, ${artist} artista, ${similar} simili), ${missing.length} mancanti`);
+      console.log(`📊 Risultati: ${found.length}/${playlistTracks.length} (${exact} esatti, ${title} titolo, ${artist} artista, ${similar} simili), ${missing.length} mancanti`);
     }
 
     function renderFound() {
@@ -591,7 +602,9 @@
         
         lastMatched.playlistName = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
         console.log('📁 Nome playlist:', lastMatched.playlistName);
-        doMatch(tracks);
+        
+        // Usa setTimeout per non bloccare la UI
+        setTimeout(() => doMatch(tracks), 100);
       };
       r.readAsText(file);
     }
